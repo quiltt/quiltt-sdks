@@ -100,7 +100,20 @@ jobs:
         run: |
           xcrun simctl list devices available
 
-          DEVICE_ID=$(xcrun simctl list devices available | grep -E "iPhone (16|15)" | head -1 | awk -F '[()]' '{print $2}')
+          # Prefer iPhone 16 on iOS 18.x for compatibility with Xcode 16.2.
+          # head -1 on the full list picks the oldest iOS version first, causing
+          # slow data migration boot cycles and hangs during app install.
+          DEVICE_ID=$(xcrun simctl list devices available | awk '
+            /^-- iOS 18/ { in_target=1; next }
+            /^-- / { in_target=0; next }
+            in_target && /iPhone 16/ { print; exit }
+          ' | awk -F '[()]' '{print $2}')
+
+          # Fall back to the newest available iPhone 15 or 16 simulator
+          if [ -z "$DEVICE_ID" ]; then
+            DEVICE_ID=$(xcrun simctl list devices available | grep -E "iPhone (16|15)" | tail -1 | awk -F '[()]' '{print $2}')
+          fi
+
           if [ -z "$DEVICE_ID" ]; then
             echo "No available iPhone simulator found."
             exit 1
@@ -111,7 +124,7 @@ jobs:
 
           flutter devices
           set -o pipefail
-          flutter test integration_test/app_test.dart -d "$DEVICE_ID" 2>&1 | tee flutter-integration-ios.log
+          flutter test integration_test/app_test.dart -d "$DEVICE_ID" --device-timeout 120 2>&1 | tee flutter-integration-ios.log
 
       - if: failure() && matrix.platform == 'android'
         name: Upload Flutter Android test artifacts
