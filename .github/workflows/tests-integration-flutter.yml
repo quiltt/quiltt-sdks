@@ -124,7 +124,7 @@ jobs:
 
           flutter devices
           set -o pipefail
-          flutter test integration_test/app_test.dart -d "$DEVICE_ID" --device-timeout 120 2>&1 | tee flutter-integration-ios.log
+          flutter test integration_test/app_test.dart -d "$DEVICE_ID" 2>&1 | tee flutter-integration-ios.log
 
       - if: failure() && matrix.platform == 'android'
         name: Upload Flutter Android test artifacts

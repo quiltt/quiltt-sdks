@@ -64,7 +64,7 @@ Capacitor plugin and framework adapters for integrating Quiltt Connector in iOS 
 
 #### [Android SDK](packages/android#readme)
 
-[![Maven Central](https://img.shields.io/maven-central/v/app.quiltt/connector)](https://search.maven.org/artifact/app.quiltt/connector)
+[![Maven Central](https://img.shields.io/maven-central/v/io.quiltt/connector)](https://search.maven.org/artifact/io.quiltt/connector)
 
 Native Android SDK (Kotlin) for integrating Quiltt Connector. Supports View-based and Jetpack Compose layouts with App Links for OAuth deep-link handling. Requires Android API Level 26+.
 
