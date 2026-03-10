@@ -82,7 +82,10 @@ class _MyHomePageState extends State<MyHomePage> {
       debugPrint("onExit: ${event.type} ${event.eventMetadata.connectorId}");
     }, onExitSuccess: (event) {
       debugPrint("onExitSuccess: ${event.eventMetadata.connectionId}");
-      _setConnectionId(event.eventMetadata.connectionId!);
+      final connectionId = event.eventMetadata.connectionId;
+      if (connectionId != null) {
+        _setConnectionId(connectionId);
+      }
     }, onExitAbort: (event) {
       debugPrint("onExitAbort: ${event.eventMetadata.connectorId}");
     }, onExitError: (event) {
