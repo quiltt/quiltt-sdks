@@ -61,7 +61,9 @@ struct WebView: UIViewRepresentable {
                                               },
                                               onExitSuccess: { metadata in
                                                 print("onExitSuccess \(metadata)")
-                                                connectionId = metadata.connectionId!
+                                                if let newConnectionId = metadata.connectionId {
+                                                    connectionId = newConnectionId
+                                                }
                                                 showHomeView = true
                                               },
                                               onExitAbort: { metadata in

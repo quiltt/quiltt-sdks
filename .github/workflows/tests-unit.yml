@@ -35,6 +35,7 @@ jobs:
               - 'packages/flutter/**'
             ios:
               - 'packages/ios/**'
+              - 'Package.swift'
 
   test:
     name: Run Tests

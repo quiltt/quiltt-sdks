@@ -6,9 +6,11 @@ on:
       - main
     paths:
       - "packages/ios/**"
+      - "Package.swift"
   pull_request:
     paths:
       - "packages/ios/**"
+      - "Package.swift"
   workflow_dispatch:
 
 permissions:
