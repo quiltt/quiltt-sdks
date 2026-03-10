@@ -75,7 +75,10 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           working-directory: packages/android
-          script: ./gradlew app:connectedDebugAndroidTest
+          script: |
+            adb shell input keyevent KEYCODE_WAKEUP
+            adb shell wm dismiss-keyguard
+            ./gradlew app:connectedDebugAndroidTest
 
       - if: failure()
         name: Upload Android test artifacts
