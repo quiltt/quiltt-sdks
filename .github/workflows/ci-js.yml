@@ -21,18 +21,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: ["24", "22", "20"] # We only support LTS versions of Node.js that are still maintained
+        node-version: ["24", "22", "20"] # We only support LTS versions of Node.js that are actively maintained
     steps:
       - name: Checkout branch
         uses: actions/checkout@v4
 
       - name: Setup environment
-        uses: ./.github/actions/setup
+        uses: ./.github/actions/setup-js
         with:
           node-version: ${{ matrix.node-version }}
 
       - name: Lint
-        run: pnpm lint
+        run: pnpm turbo run lint --filter=!@quiltt/android --filter=!@quiltt/flutter --filter=!@quiltt/ios
 
       - name: Typecheck
         run: pnpm typecheck

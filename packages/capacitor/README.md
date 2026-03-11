@@ -212,4 +212,4 @@ import { QuilttConnector } from '@quiltt/capacitor'
 
 ## License
 
-MIT
+This project is licensed under the terms of the MIT license. See the [LICENSE](LICENSE.md) file for more information.

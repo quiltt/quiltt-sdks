@@ -19,7 +19,7 @@ class QuilttConnectorActivity : AppCompatActivity() {
         quilttConnector.authenticate("<SESSION_TOKEN>")
         val quilttConnectorConfiguration = QuilttConnectorConnectConfiguration(
             connectorId = "<CONNECTOR_ID>",
-            oauthRedirectUrl = "<YOUR_HTTPS_APP_LINK>")
+            appLauncherUrl = "<YOUR_HTTPS_APP_LINK>")
 
         webView = quilttConnector.connect(
             config = quilttConnectorConfiguration,

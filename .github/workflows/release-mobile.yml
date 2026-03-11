@@ -85,10 +85,15 @@ jobs:
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
+          # SemVer tag for Swift Package Manager version resolution
+          if ! git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            git tag "v$VERSION"
+          fi
+
           git tag "android/v$VERSION"
           git tag "flutter/v$VERSION"
           git tag "ios/v$VERSION"
-          git push origin "android/v$VERSION" "flutter/v$VERSION" "ios/v$VERSION"
+          git push origin "v$VERSION" "android/v$VERSION" "flutter/v$VERSION" "ios/v$VERSION"
 
   # ── 3a. Build, test, and publish Android to Maven Central ────────────────────
   publish-android:
@@ -129,17 +134,23 @@ jobs:
       - name: Build example app
         run: bundle exec fastlane android build_example_app
 
-      - name: Publish to Maven Central
-        run: |
-          ./gradlew publishConnectorPublicationToSonatypeRepository \
-            --max-workers 1 closeAndReleaseSonatypeStagingRepository
+      - name: Publish to Maven Central (Portal API)
         env:
-          OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
-          OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
-          SIGNING_KEY_ID: ${{ secrets.ANDROID_SIGNING_KEY_ID }}
-          SIGNING_PASSWORD: ${{ secrets.ANDROID_SIGNING_PASSWORD }}
-          SIGNING_KEY: ${{ secrets.ANDROID_SIGNING_KEY }}
-          SONATYPE_STAGING_PROFILE_ID: ${{ secrets.SONATYPE_STAGING_PROFILE_ID }}
+          ANDROID_SIGNING_KEY_ID: ${{ secrets.ANDROID_SIGNING_KEY_ID }}
+          ANDROID_SIGNING_KEY: ${{ secrets.ANDROID_SIGNING_KEY }}
+          ANDROID_SIGNING_PASSWORD: ${{ secrets.ANDROID_SIGNING_PASSWORD }}
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+        run: |
+          ./gradlew publishConnectorPublicationToLocalStagingRepository
+          cd build/local-staging
+          zip -r ../../connector-bundle.zip .
+          cd ../..
+          MAVEN_CENTRAL_TOKEN=$(printf "%s:%s" "$MAVEN_CENTRAL_USERNAME" "$MAVEN_CENTRAL_PASSWORD" | base64 -w 0)
+          curl --fail --request POST \
+            --header "Authorization: Bearer $MAVEN_CENTRAL_TOKEN" \
+            --form "bundle=@connector-bundle.zip" \
+            "https://central.sonatype.com/api/v1/publisher/upload?name=io.quiltt%3Aconnector%3A${{ needs.prepare.outputs.version }}&publishingType=AUTOMATIC"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -177,7 +188,7 @@ jobs:
     name: Publish Flutter
     needs: [prepare, update-versions]
     runs-on: ubuntu-latest
-    environment: pub-dev
+    environment: pub-dev # pub-dev is a valid environment name on quiltt-sdks. If the GitHub Actions Workflow extension is flagging this as an error, it can be ignored.
     permissions:
       id-token: write
     defaults:
@@ -189,11 +200,7 @@ jobs:
         with:
           ref: main
 
-      - uses: flutter-actions/setup-flutter@v4
-        with:
-          version: "3.32.0"
-          channel: stable
-          cache: true
+      - uses: ./.github/actions/setup-flutter
 
       - name: Install dependencies
         run: |
@@ -255,9 +262,11 @@ jobs:
         run: bundle install
 
       - name: Build Swift package
+        working-directory: .
         run: swift build -c release
 
       - name: Run tests
+        working-directory: .
         run: swift test
 
       - name: Build example app

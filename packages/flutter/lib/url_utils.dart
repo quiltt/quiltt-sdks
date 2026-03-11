@@ -12,16 +12,14 @@ class URLUtils {
       caseSensitive: false,
     ).hasMatch(string);
 
-    // Match iOS behavior - ignore double encoding check for now
-    return hasEncodedChars;
+    // Double-encoded strings (e.g. %253A) are not considered properly encoded —
+    // normalizeUrlEncoding should be used to fix them first.
+    final hasDoubleEncoding = RegExp(
+      r'%25[0-9A-F]{2}',
+      caseSensitive: false,
+    ).hasMatch(string);
 
-    // TODO: Decide what to do with double encoding
-    // Check if double encoding has occurred (e.g., %253A instead of %3A)
-    // final hasDoubleEncoding =
-    //     RegExp(r'%25[0-9A-F]{2}', caseSensitive: false).hasMatch(string);
-    //
-    // If we have encoded chars but no double encoding, it's likely properly encoded
-    // return hasEncodedChars && !hasDoubleEncoding;
+    return hasEncodedChars && !hasDoubleEncoding;
   }
 
   /// Smart URL encoder that ensures a string is encoded exactly once

@@ -1,0 +1,82 @@
+name: Integration Tests - Capacitor
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'examples/capacitor-react/**'
+      - 'examples/capacitor-vue/**'
+      - 'packages/capacitor/**'
+      - 'packages/react/**'
+      - 'packages/vue/**'
+      - 'packages/core/**'
+  pull_request:
+    paths:
+      - 'examples/capacitor-react/**'
+      - 'examples/capacitor-vue/**'
+      - 'packages/capacitor/**'
+      - 'packages/react/**'
+      - 'packages/vue/**'
+      - 'packages/core/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: write
+  statuses: write
+  actions: write
+
+jobs:
+  test-capacitor:
+    name: Capacitor (${{ matrix.variant }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: react
+            working-directory: ./examples/capacitor-react
+            artifact-name: capacitor_react_test_artifacts_${{ github.sha }}
+          - variant: vue
+            working-directory: ./examples/capacitor-vue
+            artifact-name: capacitor_vue_test_artifacts_${{ github.sha }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        uses: ./.github/actions/setup-js
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: ${{ matrix.working-directory }}
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install Playwright browsers
+        run: pnpm run playwright:install
+        working-directory: ${{ matrix.working-directory }}
+
+      - name: Build app
+        run: pnpm run build
+        working-directory: ${{ matrix.working-directory }}
+
+      - name: Run smoke test
+        run: pnpm run test:e2e
+        working-directory: ${{ matrix.working-directory }}
+
+      - if: failure()
+        name: Upload test artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact-name }}
+          path: ${{ matrix.working-directory }}/playwright-report

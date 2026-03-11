@@ -1,0 +1,151 @@
+name: Integration Tests - Flutter SDK
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "packages/flutter/**"
+  pull_request:
+    paths:
+      - "packages/flutter/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: write
+  statuses: write
+  actions: write
+
+jobs:
+  test-flutter:
+    name: Flutter Integration Tests (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: android
+            os: ubuntu-latest
+          - platform: ios
+            os: macos-14
+    defaults:
+      run:
+        working-directory: packages/flutter/example
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        if: matrix.platform == 'android'
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - uses: ./.github/actions/setup-flutter
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Cache Android SDK components
+        if: matrix.platform == 'android'
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/cmake/3.22.1
+            /usr/local/lib/android/sdk/ndk/26.3.11579264
+          key: android-sdk-components-${{ runner.os }}-cmake-3.22.1-ndk-26.3.11579264
+
+      - name: Preinstall Android SDK components
+        if: matrix.platform == 'android'
+        run: |
+          SDK_ROOT="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(command -v sdkmanager)"
+          fi
+
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" "cmake;3.22.1" "ndk;26.3.11579264"
+
+      - name: Enable KVM group perms
+        if: matrix.platform == 'android'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Test
+        run: flutter test
+
+      - name: Run integration tests (Android)
+        if: matrix.platform == 'android'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          working-directory: packages/flutter/example
+          script: |
+            flutter devices
+            bash -lc 'set -o pipefail; flutter test integration_test/app_test.dart -d emulator-5554 2>&1 | tee flutter-integration-android.log'
+
+      - name: Run integration tests (iOS)
+        if: matrix.platform == 'ios'
+        run: |
+          xcrun simctl list devices available
+
+          # Prefer iPhone 16 on iOS 18.x for compatibility with Xcode 16.2.
+          # head -1 on the full list picks the oldest iOS version first, causing
+          # slow data migration boot cycles and hangs during app install.
+          DEVICE_ID=$(xcrun simctl list devices available | awk '
+            /^-- iOS 18/ { in_target=1; next }
+            /^-- / { in_target=0; next }
+            in_target && /iPhone 16/ { print; exit }
+          ' | awk -F '[()]' '{print $2}')
+
+          # Fall back to the newest available iPhone 15 or 16 simulator
+          if [ -z "$DEVICE_ID" ]; then
+            DEVICE_ID=$(xcrun simctl list devices available | grep -E "iPhone (16|15)" | tail -1 | awk -F '[()]' '{print $2}')
+          fi
+
+          if [ -z "$DEVICE_ID" ]; then
+            echo "No available iPhone simulator found."
+            exit 1
+          fi
+
+          xcrun simctl boot "$DEVICE_ID" || true
+          xcrun simctl bootstatus "$DEVICE_ID" -b
+
+          flutter devices
+          set -o pipefail
+          flutter test integration_test/app_test.dart -d "$DEVICE_ID" 2>&1 | tee flutter-integration-ios.log
+
+      - if: failure() && matrix.platform == 'android'
+        name: Upload Flutter Android test artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter_android_integration_test_artifacts_${{ github.sha }}
+          path: |
+            ./packages/flutter/example/flutter-integration-android.log
+            ./packages/flutter/example/build/app/outputs
+          retention-days: 3
+          if-no-files-found: warn
+          compression-level: 6
+
+      - if: failure() && matrix.platform == 'ios'
+        name: Upload Flutter iOS test artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter_ios_integration_test_artifacts_${{ github.sha }}
+          path: |
+            ./packages/flutter/example/flutter-integration-ios.log
+            ./packages/flutter/example/build/ios
+          retention-days: 3
+          if-no-files-found: warn
+          compression-level: 6

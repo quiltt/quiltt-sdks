@@ -51,6 +51,7 @@
     "src/**",
     "ios/Sources",
     "QuilttConnector.podspec",
+    "LICENSE.md",
     "CHANGELOG.md"
   ],
   "scripts": {

@@ -9,6 +9,8 @@ excluded:
 disabled_rules:
   - todo # TODO comments are managed by the root check-todos.yml workflow
   - unneeded_break_in_switch # TODO: Remove explicit breaks from switch cases in QuilttConnectorWebview
+  - trailing_comma
+  - opening_brace
 
 opt_in_rules:
   - empty_count # Prefer isEmpty over count == 0

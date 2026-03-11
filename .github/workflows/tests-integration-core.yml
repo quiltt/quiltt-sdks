@@ -1,0 +1,22 @@
+name: Integration Tests - Core
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'packages/core/**'
+  pull_request:
+    paths:
+      - 'packages/core/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-core:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Placeholder
+        run: echo 'No integration tests are defined for @quiltt/core yet.'

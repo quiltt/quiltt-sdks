@@ -63,8 +63,8 @@ class QuilttConnectorWebview: WKWebView, WKNavigationDelegate {
         self.onExitAbort = onExitAbort
         self.onExitError = onExitError
 
-        // Apply smart URL encoding to the redirect URL
-        let safeOAuthRedirectUrl = URLUtils.smartEncodeURIComponent(config.oauthRedirectUrl)
+        // Apply smart URL encoding to the app launcher URL
+        let safeAppLauncherUrl = URLUtils.smartEncodeURIComponent(config.appLauncherUrl)
 
         // Build the URL components
         var urlComponents = URLComponents()
@@ -74,22 +74,27 @@ class QuilttConnectorWebview: WKWebView, WKNavigationDelegate {
         // Create query items
         var queryItems = [
             URLQueryItem(name: "mode", value: "webview"),
-            URLQueryItem(name: "agent", value: "ios-\(quilttSdkVersion)")
+            URLQueryItem(name: "agent", value: "ios-\(quilttSdkVersion)"),
         ]
 
-        // Handle the OAuth redirect URL with special care
-        if URLUtils.isEncoded(safeOAuthRedirectUrl) {
+        // Handle the app launcher URL with special care
+        if URLUtils.isEncoded(safeAppLauncherUrl) {
             // If already encoded, decode once to prevent double encoding
-            let decodedOnce = safeOAuthRedirectUrl.removingPercentEncoding ?? safeOAuthRedirectUrl
-            queryItems.append(URLQueryItem(name: "oauth_redirect_url", value: decodedOnce))
+            let decodedOnce = safeAppLauncherUrl.removingPercentEncoding ?? safeAppLauncherUrl
+            queryItems.append(URLQueryItem(name: "app_launcher_url", value: decodedOnce))
         } else {
-            queryItems.append(URLQueryItem(name: "oauth_redirect_url", value: safeOAuthRedirectUrl))
+            queryItems.append(URLQueryItem(name: "app_launcher_url", value: safeAppLauncherUrl))
         }
 
         urlComponents.queryItems = queryItems
 
         if let url = urlComponents.url {
-            let req = URLRequest(url: url)
+            let sdkAgent = TelemetryUtils.getSDKAgent(
+                sdkVersion: quilttSdkVersion,
+                platformInfo: TelemetryUtils.getRuntimePlatformInfo()
+            )
+            var req = URLRequest(url: url)
+            req.setValue(sdkAgent, forHTTPHeaderField: "Quiltt-SDK-Agent")
             return super.load(req)
         }
         return nil
@@ -98,7 +103,7 @@ class QuilttConnectorWebview: WKWebView, WKNavigationDelegate {
     /**
      urlAllowList & shouldRender ensure we are only rendering Quiltt, MX and Plaid content in Webview
      For other urls, we assume those are bank urls, which needs to be handle in external browser.
-
+    
      https://developer.apple.com/documentation/webkit/wknavigationdelegate/1455641-webview
      */
     public func webView(
@@ -203,7 +208,8 @@ class QuilttConnectorWebview: WKWebView, WKNavigationDelegate {
         case "Navigate":
             if let urlc = URLComponents(string: url.absoluteString),
                 let navigateUrlItem = urlc.queryItems?.first(where: { $0.name == "url" }),
-                let navigateUrlString = navigateUrlItem.value {
+                let navigateUrlString = navigateUrlItem.value
+            {
                 // Handle potential encoding issues
                 if URLUtils.isEncoded(navigateUrlString) {
                     let decodedUrl = navigateUrlString.removingPercentEncoding ?? navigateUrlString

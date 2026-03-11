@@ -1,0 +1,11 @@
+name: Setup Flutter
+description: Install and cache pinned Flutter SDK for CI
+
+runs:
+  using: composite
+  steps:
+    - uses: flutter-actions/setup-flutter@v4
+      with:
+        version: '3.41.4'
+        channel: stable
+        cache: true

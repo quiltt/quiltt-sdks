@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.2.0] - 2026-03-04
+
+### Changed
+
+- Move from standalone repo to quiltt/quiltt-sdks
+
 ## [3.0.3] - 2025-10-14
 
 ### Bugfixes

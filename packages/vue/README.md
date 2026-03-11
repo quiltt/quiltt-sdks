@@ -198,7 +198,7 @@ See [@quiltt/capacitor](../capacitor#readme) for full documentation.
 
 ## License
 
-MIT
+This project is licensed under the terms of the MIT license. See the [LICENSE](LICENSE.md) file for more information.
 
 ## Contributing
 

@@ -9,15 +9,12 @@ object UrlUtils {
     fun isEncoded(str: String): Boolean {
         // Check for typical URL encoding patterns like %20, %3A, etc.
         val hasEncodedChars = "%[0-9A-F]{2}".toRegex(RegexOption.IGNORE_CASE).containsMatchIn(str)
-        
-        // Check if double encoding has occurred (e.g., %253A instead of %3A)
-        // val hasDoubleEncoding = "%25[0-9A-F]{2}".toRegex(RegexOption.IGNORE_CASE).containsMatchIn(str)
-        
-        // If we have encoded chars but no double encoding, it's likely properly encoded
-        return hasEncodedChars 
-        
-        // TODO: Decide what to do with double encoding
-        // && !hasDoubleEncoding
+
+        // Double-encoded strings (e.g. %253A) are not considered properly encoded —
+        // normalizeUrlEncoding should be used to fix them first.
+        val hasDoubleEncoding = "%25[0-9A-F]{2}".toRegex(RegexOption.IGNORE_CASE).containsMatchIn(str)
+
+        return hasEncodedChars && !hasDoubleEncoding
     }
     
     /**

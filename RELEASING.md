@@ -33,7 +33,7 @@ The following packages are published to their respective registries automaticall
 | --- | --- | --- |
 | Android (`io.quiltt:connector`) | Maven Central | `release-mobile.yml` |
 | Flutter (`quiltt_connector`) | pub.dev | `release-mobile.yml` |
-| iOS (`QuilttConnector`) | GitHub Releases + SPM tag | `release-mobile.yml` |
+| iOS (`QuilttConnector`) | GitHub Releases + SPM (`vX.Y.Z`) tag | `release-mobile.yml` |
 
 Mobile packages have `private: true` in their `package.json` so Changesets tracks their versions but does not publish them to npm. Publishing is handled by `.github/workflows/release-mobile.yml`, which triggers on the `@quiltt/core@*` git tags created by Changesets.
 
@@ -157,11 +157,28 @@ Triggered automatically by the `@quiltt/core@*` tag pushed by the JS release:
      - `packages/flutter/lib/quiltt_sdk_version.dart`
      - `packages/ios/Sources/QuilttConnector/QuilttSdkVersion.swift`
    - Commits these changes directly to `main` with `[skip ci]` to avoid re-triggering CI
-   - Pushes platform tags: `android/v*`, `flutter/v*`, `ios/v*`
+   - Pushes tags: `v*` (SemVer for SPM), plus platform tags `android/v*`, `flutter/v*`, `ios/v*`
 3. **Publish in parallel** (each job checks out `main` after the version commit):
    - Android: builds, tests, publishes to Maven Central, creates `android/v*` GitHub release
    - Flutter: analyzes, validates, publishes to pub.dev, creates `flutter/v*` GitHub release
-   - iOS: builds, tests, creates `ios/v*` GitHub release (iOS is distributed via SPM — the `ios/v*` tag is the SPM release ref)
+   - iOS: builds and tests the root `Package.swift`, then creates `ios/v*` GitHub release (iOS is distributed via SPM using the SemVer `v*` tag)
+
+#### Swift Package Index (Optional)
+
+To list the iOS SDK on [Swift Package Index](https://swiftpackageindex.com):
+
+1. Sign in to Swift Package Index with GitHub
+2. Click **Add a package**
+3. Enter repository URL: `https://github.com/quiltt/quiltt-sdks`
+4. Submit for indexing
+
+Swift Package Index discovers updates automatically from new SemVer tags. No bot installation is required.
+
+Requirements for successful indexing:
+
+- Root `Package.swift` exists and builds
+- SemVer tags (`vX.Y.Z`) are pushed for releases
+- Repository is publicly accessible
 
 ### Configuration Details
 
@@ -244,12 +261,13 @@ If there are version conflicts:
 
 #### Android Release
 
-- `OSSRH_USERNAME`: Sonatype OSSRH username
-- `OSSRH_PASSWORD`: Sonatype OSSRH password
+- `MAVEN_CENTRAL_USERNAME`: Maven Central Portal API token username
+- `MAVEN_CENTRAL_PASSWORD`: Maven Central Portal API token password
 - `ANDROID_SIGNING_KEY_ID`: GPG signing key ID
 - `ANDROID_SIGNING_PASSWORD`: GPG signing key passphrase
 - `ANDROID_SIGNING_KEY`: GPG signing key (base64 encoded)
-- `SONATYPE_STAGING_PROFILE_ID`: Sonatype staging profile ID
+
+> **Note**: `MAVEN_CENTRAL_USERNAME` and `MAVEN_CENTRAL_PASSWORD` must be Portal API tokens, not legacy OSSRH credentials. Generate them at [central.sonatype.com/account](https://central.sonatype.com/usertoken) → "Generate User Token".
 
 #### Flutter Release
 

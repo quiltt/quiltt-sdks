@@ -1,12 +1,12 @@
 class QuilttConnectorConfiguration {
   String connectorId;
-  String oauthRedirectUrl;
+  String appLauncherUrl;
   String? connectionId;
   String? institution;
 
   QuilttConnectorConfiguration({
     required this.connectorId,
-    required this.oauthRedirectUrl,
+    required this.appLauncherUrl,
     this.connectionId,
     this.institution,
   });

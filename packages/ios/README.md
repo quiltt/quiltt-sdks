@@ -49,7 +49,7 @@ struct WebView: UIViewRepresentable {
     @Binding var connectionId: String
     @State var config = QuilttConnectorConnectConfiguration(
         connectorId: "<CONNECTOR_ID>",
-        oauthRedirectUrl: "<YOUR_HTTPS_UNIVERSAL_LINK>"
+        appLauncherUrl: "<YOUR_HTTPS_UNIVERSAL_LINK>"
     )
 
     func makeUIView(context: Context) -> WKWebView {
@@ -61,7 +61,9 @@ struct WebView: UIViewRepresentable {
                                               },
                                               onExitSuccess: { metadata in
                                                 print("onExitSuccess \(metadata)")
-                                                connectionId = metadata.connectionId!
+                                                if let newConnectionId = metadata.connectionId {
+                                                    connectionId = newConnectionId
+                                                }
                                                 showHomeView = true
                                               },
                                               onExitAbort: { metadata in

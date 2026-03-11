@@ -154,7 +154,7 @@ export default ConnectorScreen
 
 ## License
 
-This project is licensed under the terms of the MIT license. See the [repository LICENSE](../../LICENSE.md) file for more information.
+This project is licensed under the terms of the MIT license. See the [LICENSE](LICENSE.md) file for more information.
 
 ## Contributing
 

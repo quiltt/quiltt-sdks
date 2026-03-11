@@ -47,6 +47,7 @@
   "files": [
     "dist/**",
     "src/**",
+    "LICENSE.md",
     "CHANGELOG.md"
   ],
   "main": "dist/index.js",

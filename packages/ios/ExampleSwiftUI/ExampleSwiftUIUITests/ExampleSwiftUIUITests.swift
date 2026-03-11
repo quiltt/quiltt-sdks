@@ -1,41 +1,88 @@
-//
-//  ExampleSwiftUIUITests.swift
-//  ExampleSwiftUIUITests
-//
-//  Created by Tom Lee on 12/1/23.
-//
-
 import XCTest
 
 final class ExampleSwiftUIUITests: XCTestCase {
+    private var app: XCUIApplication!
 
     override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
-
-        // In UI tests it is usually best to stop immediately when a failure occurs.
         continueAfterFailure = false
-
-        // In UI tests it’s important to set the initial state - such as interface orientation - required for your tests before they run. The setUp method is a good place to do this.
+        app = XCUIApplication()
+        app.terminate()
+        app.launch()
     }
 
     override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
+        app.terminate()
+        app = nil
     }
 
-    func testExample() throws {
-        // UI tests must launch the application that they test.
-        let app = XCUIApplication()
-        app.launch()
+    // MARK: - Home screen
 
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
+    func testAppLaunchesWithoutCrashing() {
+        XCTAssertTrue(app.state == .runningForeground, "App should be running in the foreground after launch")
+        add(XCTAttachment(screenshot: app.screenshot()))
     }
 
-    func testLaunchPerformance() throws {
-        if #available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 7.0, *) {
-            // This measures how long it takes to launch your application.
-            measure(metrics: [XCTApplicationLaunchMetric()]) {
-                XCUIApplication().launch()
-            }
-        }
+    func testHomeScreenShowsNavigationTitle() {
+        let navBar = app.navigationBars["Home View"]
+        XCTAssertTrue(navBar.waitForExistence(timeout: 5), "Navigation bar with title 'Home View' should be visible")
+    }
+
+    func testHomeScreenShowsLaunchConnectorButton() {
+        let button = app.buttons["Launch Connector"]
+        XCTAssertTrue(button.waitForExistence(timeout: 5), "Launch Connector button should be visible")
+        XCTAssertTrue(button.isEnabled, "Launch Connector button should be enabled")
+    }
+
+    func testHomeScreenShowsConnectionIdLabel() {
+        let navBar = app.navigationBars["Home View"]
+        XCTAssertTrue(navBar.waitForExistence(timeout: 10), "Home screen should be visible before asserting connection label")
+
+        // The label may show the initial value or a previously established connection id.
+        let initialLabel = app.staticTexts["No Connection ID"]
+        let connectionIdPrefixLabel = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "connection_")).firstMatch
+
+        XCTAssertTrue(
+            initialLabel.exists || connectionIdPrefixLabel.exists,
+            "Connection ID label should be visible on home screen"
+        )
+    }
+
+    // MARK: - Connector navigation
+
+    func testTappingLaunchConnectorOpensConnectorView() {
+        let button = app.buttons["Launch Connector"]
+        XCTAssertTrue(button.waitForExistence(timeout: 5))
+        button.tap()
+
+        // ContentView swaps showHomeView to false; the home NavigationBar disappears.
+        let homeNavBar = app.navigationBars["Home View"]
+        XCTAssertFalse(
+            homeNavBar.waitForExistence(timeout: 3),
+            "Home navigation bar should no longer be visible after navigating to Connector"
+        )
+
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "connector-view"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
+    func testConnectorViewDoesNotCrashApp() {
+        let button = app.buttons["Launch Connector"]
+        XCTAssertTrue(button.waitForExistence(timeout: 5))
+        button.tap()
+
+        // Allow the WKWebView time to begin loading the Quiltt connector (connectorId: 1h6bz4vo9z)
+        sleep(3)
+
+        XCTAssertTrue(
+            app.state == .runningForeground,
+            "App should still be running in the foreground after the Connector WebView loads"
+        )
+
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "connector-loaded"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
     }
 }

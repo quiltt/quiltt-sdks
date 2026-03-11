@@ -8,7 +8,7 @@ import { QuilttConnector } from '@quiltt/react-native'
 import { ThemedView } from '@/components/ThemedView'
 
 const CONNECTOR_ID = process.env.EXPO_PUBLIC_CONNECTOR_ID
-const HTTPS_APP_LINK = process.env.EXPO_PUBLIC_HTTPS_APP_LINK
+const APP_LAUNCHER_URL = process.env.EXPO_PUBLIC_APP_LAUNCHER_URL
 const INSTITUTION_SEARCH_TERM = process.env.EXPO_PUBLIC_INSTITUTION_SEARCH_TERM
 
 export default function ConnectorScreen() {
@@ -46,14 +46,14 @@ export default function ConnectorScreen() {
     }
   }, [])
 
-  console.log({ HTTPS_APP_LINK })
+  console.log({ APP_LAUNCHER_URL })
 
   return (
     <ThemedView style={styles.container} testID="quiltt-connector">
       <QuilttConnector
         ref={connectorRef}
         connectorId={CONNECTOR_ID!}
-        appLauncherUrl="https://www.example.com"
+        appLauncherUrl={APP_LAUNCHER_URL ?? 'https://example.com/callback'}
         institution={INSTITUTION_SEARCH_TERM}
         onExitSuccess={(metadata: ConnectorSDKCallbackMetadata) => {
           console.log(metadata.connectionId)

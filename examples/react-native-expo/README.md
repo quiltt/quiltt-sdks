@@ -32,7 +32,7 @@ Set these values in `.env` for real Quiltt testing:
 - `EXPO_PUBLIC_QUILTT_CLIENT_ID`
 - `EXPO_PUBLIC_QUILTT_AUTH_TOKEN`
 - `EXPO_PUBLIC_CONNECTOR_ID`
-- `EXPO_PUBLIC_APP_LAUNCHER_URL`
+- `EXPO_PUBLIC_APP_LAUNCHER_URL` (must be an `https://` app link)
 
 ## Run Targets
 

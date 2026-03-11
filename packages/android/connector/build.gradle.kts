@@ -25,6 +25,9 @@ android {
                 "proguard-rules.pro"
             )
         }
+        debug {
+            enableUnitTestCoverage = true
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
@@ -33,10 +36,16 @@ android {
     kotlinOptions {
         jvmTarget = "1.8"
     }
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.12.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
 }
@@ -46,7 +55,7 @@ publishing {
         register<MavenPublication>("connector") {
             groupId = "io.quiltt"
             artifactId = "connector"
-            version = "1.0.3"
+            version = "5.2.0"
 
             pom {
                 name.set("Quiltt Connector")
@@ -79,17 +88,15 @@ publishing {
                 }
             }
 
-            artifact("$buildDir/outputs/aar/connector-release.aar")
-        } // io.quiltt:quiltt-connector:VERSION
+            afterEvaluate {
+                artifact(tasks.named("bundleReleaseAar"))
+            }
+        } // io.quiltt:connector:VERSION
     }
     repositories {
         maven {
-            name = "OSSRH"
-            url = uri("https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/")
-            credentials {
-                username = System.getenv("OSSRH_USERNAME")
-                password = System.getenv("OSSRH_PASSWORD")
-            }
+            name = "LocalStaging"
+            url = uri("${rootProject.layout.buildDirectory.get()}/local-staging")
         }
     }
 }

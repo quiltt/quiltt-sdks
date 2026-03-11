@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher_string.dart';
 import 'package:quiltt_connector/configuration.dart';
 import 'package:quiltt_connector/event.dart';
 import 'package:quiltt_connector/quiltt_sdk_version.dart';
+import 'package:quiltt_connector/telemetry_utils.dart';
 import 'package:quiltt_connector/url_utils.dart';
 
 /// This class is the entry point for the Quiltt Connector SDK.
@@ -336,13 +337,21 @@ class _WebViewPage {
           },
         ),
       )
-      ..loadRequest(Uri.parse(connectorUrl));
+      ..loadRequest(
+        Uri.parse(connectorUrl),
+        headers: {
+          'Quiltt-SDK-Agent': getSDKAgent(
+            quilttSdkVersion,
+            getRuntimePlatformInfo(),
+          ),
+        },
+      );
   }
 
   Widget build(BuildContext context, {String? token, String? connectionId}) {
-    // Apply smart URL encoding to the redirect URL
-    var safeOAuthRedirectUrl = URLUtils.smartEncodeURIComponent(
-      config.oauthRedirectUrl,
+    // Apply smart URL encoding to the app launcher URL
+    var safeAppLauncherUrl = URLUtils.smartEncodeURIComponent(
+      config.appLauncherUrl,
     );
 
     // Build the URL with proper parameter handling
@@ -351,16 +360,16 @@ class _WebViewPage {
       'agent': 'flutter-$quilttSdkVersion',
     });
 
-    // Handle the OAuth redirect URL with special care
+    // Handle the app launcher URL with special care
     var queryParams = Map<String, String>.from(uriBuilder.queryParameters);
 
     // If already encoded, decode once to prevent double encoding that would happen
     // when adding it to the URL parameters
-    if (URLUtils.isEncoded(safeOAuthRedirectUrl)) {
-      final decodedOnce = Uri.decodeComponent(safeOAuthRedirectUrl);
-      queryParams['oauth_redirect_url'] = decodedOnce;
+    if (URLUtils.isEncoded(safeAppLauncherUrl)) {
+      final decodedOnce = Uri.decodeComponent(safeAppLauncherUrl);
+      queryParams['app_launcher_url'] = decodedOnce;
     } else {
-      queryParams['oauth_redirect_url'] = safeOAuthRedirectUrl;
+      queryParams['app_launcher_url'] = safeAppLauncherUrl;
     }
 
     var connectorUrl = Uri.https(

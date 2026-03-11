@@ -9,16 +9,14 @@ class URLUtils {
      */
     static func isEncoded(_ string: String) -> Bool {
         // Check for typical URL encoding patterns like %20, %3A, etc.
-        let hasEncodedChars = string.range(of: "%[0-9A-F]{2}", options: .regularExpression) != nil
+        let hasEncodedChars = string.range(of: "%[0-9A-F]{2}", options: [.regularExpression, .caseInsensitive]) != nil
 
-        // Check if double encoding has occurred (e.g., %253A instead of %3A)
-        // let hasDoubleEncoding =
-        //     string.range(of: "%25[0-9A-F]{2}", options: .regularExpression) != nil
+        // Double-encoded strings (e.g. %253A) are not considered properly encoded —
+        // normalizeUrlEncoding should be used to fix them first.
+        let hasDoubleEncoding =
+            string.range(of: "%25[0-9A-F]{2}", options: [.regularExpression, .caseInsensitive]) != nil
 
-        // If we have encoded chars but no double encoding, it's likely properly encoded
-        return hasEncodedChars
-        // && !hasDoubleEncoding
-        // TODO: Decide what to do with double encoding
+        return hasEncodedChars && !hasDoubleEncoding
     }
 
     /**
@@ -51,7 +49,7 @@ class URLUtils {
      */
     static func isDoubleEncoded(_ string: String) -> Bool {
         if string.isEmpty { return false }
-        return string.range(of: "%25[0-9A-F]{2}", options: .regularExpression) != nil
+        return string.range(of: "%25[0-9A-F]{2}", options: [.regularExpression, .caseInsensitive]) != nil
     }
 
     /**

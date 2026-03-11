@@ -34,7 +34,6 @@
     "editor.defaultFormatter": "misogi.ruby-rubocop"
   },
   // This enables Typescript validation in VSCode. For example, it will mark deprecated methods/fields in the code editor.
-  "typescript.validate.enable": true,
-  "javascript.validate.enable": true,
-  "typescript.tsdk": "node_modules/typescript/lib"
+  "js/ts.validate.enabled": true,
+  "js/ts.tsdk.path": "node_modules/typescript/lib"
 }

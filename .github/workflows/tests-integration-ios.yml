@@ -1,0 +1,87 @@
+name: Integration Tests - iOS SDK
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "packages/ios/**"
+      - "Package.swift"
+  pull_request:
+    paths:
+      - "packages/ios/**"
+      - "Package.swift"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: write
+  statuses: write
+  actions: write
+
+jobs:
+  test-ios:
+    name: iOS Integration Tests
+    runs-on: macos-14
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: packages/ios
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "16.2"
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4.7"
+          bundler-cache: true
+
+      - name: Install dependencies
+        run: bundle install
+
+      - name: Build example app
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bundle exec fastlane ios build_example_app
+
+      - name: Reset simulator and Xcode build state
+        run: |
+          xcrun simctl shutdown all || true
+          rm -rf ~/Library/Developer/Xcode/DerivedData
+          rm -rf ExampleSwiftUIUITests.xcresult
+
+      - name: Run iOS UI integration tests
+        run: |
+          set -euo pipefail
+
+          run_ui_tests() {
+            local destination="$1"
+            rm -rf ExampleSwiftUIUITests.xcresult
+
+            xcodebuild \
+              -workspace ExampleSwiftUI/ExampleSwiftUI.xcodeproj/project.xcworkspace \
+              -scheme ExampleSwiftUI \
+              -destination "$destination" \
+              -only-testing:ExampleSwiftUIUITests/ExampleSwiftUIUITests \
+              -parallel-testing-enabled NO \
+              -resultBundlePath ExampleSwiftUIUITests.xcresult \
+              test
+          }
+
+          run_ui_tests "platform=iOS Simulator,name=iPhone 16 Pro,OS=18.2" || run_ui_tests "platform=iOS Simulator,name=iPhone 16 Pro"
+
+      - if: failure()
+        name: Upload iOS test artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios_integration_test_artifacts_${{ github.sha }}
+          path: |
+            ./packages/ios/ExampleSwiftUIUITests.xcresult
+          retention-days: 3
+          if-no-files-found: warn
+          compression-level: 6

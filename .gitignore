@@ -52,6 +52,7 @@ packages/flutter/.flutter-plugins
 packages/flutter/.flutter-plugins-dependencies
 
 # iOS
+.build/
 packages/ios/.build/
 packages/ios/DerivedData/
 packages/ios/Pods/

@@ -68,7 +68,7 @@ class QuilttConnectorActivity : AppCompatActivity() {
         
         val config = QuilttConnectorConnectConfiguration(
             connectorId = "<CONNECTOR_ID>",
-            oauthRedirectUrl = "<YOUR_HTTPS_APP_LINK>"
+            appLauncherUrl = "<YOUR_HTTPS_APP_LINK>"
         )
 
         // Launch Connect Flow
@@ -159,7 +159,7 @@ fun QuilttConnectorScreen() {
             
             val config = QuilttConnectorConnectConfiguration(
                 connectorId = "<CONNECTOR_ID>",
-                oauthRedirectUrl = "<YOUR_HTTPS_APP_LINK>"
+                appLauncherUrl = "<YOUR_HTTPS_APP_LINK>"
             )
             
             quilttConnector.connect(
@@ -203,7 +203,7 @@ class ReconnectActivity : AppCompatActivity() {
         
         val config = QuilttConnectorReconnectConfiguration(
             connectorId = "<CONNECTOR_ID>",
-            oauthRedirectUrl = "<YOUR_HTTPS_APP_LINK>",
+            appLauncherUrl = "<YOUR_HTTPS_APP_LINK>",
             connectionId = "<CONNECTION_ID>" // Required for reconnect
         )
 
@@ -239,7 +239,7 @@ class ReconnectActivity : AppCompatActivity() {
 
 ## Deep Link Configuration
 
-For OAuth redirect flows to work properly, you must configure App Links in your Android app to handle the `oauthRedirectUrl` parameter.
+For OAuth redirect flows to work properly, you must configure App Links in your Android app to handle the `appLauncherUrl` parameter.
 
 ### 1. Add Intent Filter to AndroidManifest.xml
 
@@ -379,7 +379,7 @@ Launches the reconnect flow for existing connections.
 ```kotlin
 data class QuilttConnectorConnectConfiguration(
     val connectorId: String,
-    val oauthRedirectUrl: String,
+    val appLauncherUrl: String,
     val institution: String? = null // Optional institution filter
 )
 ```
@@ -389,7 +389,7 @@ data class QuilttConnectorConnectConfiguration(
 ```kotlin
 data class QuilttConnectorReconnectConfiguration(
     val connectorId: String,
-    val oauthRedirectUrl: String,
+    val appLauncherUrl: String,
     val connectionId: String // Required for reconnect
 )
 ```
@@ -431,7 +431,7 @@ typealias ConnectorSDKOnExitErrorCallback = (ConnectorSDKCallbackMetadata) -> Un
 
 **WebView shows white screen after authentication:**
 
-- Verify your `oauthRedirectUrl` is properly configured
+- Verify your `appLauncherUrl` is properly configured
 - Ensure App Links are set up correctly
 - Check that your redirect URL uses HTTPS scheme
 - Verify Digital Asset Links file is accessible
@@ -444,7 +444,7 @@ typealias ConnectorSDKOnExitErrorCallback = (ConnectorSDKCallbackMetadata) -> Un
 
 **OAuth redirect not working:**
 
-- Ensure your app's App Link matches the `oauthRedirectUrl`
+- Ensure your app's App Link matches the `appLauncherUrl`
 - Verify your domain's SSL certificate is valid
 - Check that the redirect URL leads back to your app
 - Test with Android's App Link verification: `adb shell pm verify-app-links --re-verify your.package.name`

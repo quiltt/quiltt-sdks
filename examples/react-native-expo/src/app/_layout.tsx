@@ -21,15 +21,15 @@ SplashScreen.preventAutoHideAsync()
 
 export default function RootLayout() {
   /**
-   * Use this value for your QuilttConnector.appLauncherUrl
+   * This is the most recent callback URL the app received.
    *
    * @example
-   * <QuilttConnector appLauncherUrl={url} />
+   * <QuilttConnector appLauncherUrl="https://example.com/callback" />
    */
   const url = Linking.useURL()
 
   useEffect(() => {
-    // Grab this URL for the QuilttConnector.appLauncherUrl
+    // Inspect callback URLs received by the app while debugging OAuth redirects.
     console.log({ url })
   }, [url])
 

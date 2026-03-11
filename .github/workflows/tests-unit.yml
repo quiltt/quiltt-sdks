@@ -35,6 +35,7 @@ jobs:
               - 'packages/flutter/**'
             ios:
               - 'packages/ios/**'
+              - 'Package.swift'
 
   test:
     name: Run Tests
@@ -45,7 +46,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup environment
-        uses: ./.github/actions/setup
+        uses: ./.github/actions/setup-js
 
       - name: Run unit tests with coverage
         run: pnpm run test:unit
@@ -56,6 +57,8 @@ jobs:
         with:
           token: ${{ secrets.QLTY_COVERAGE_TOKEN }}
           files: coverage/lcov.info
+          format: lcov
+          incomplete: true
 
   test-android-unit:
     needs: changes
@@ -76,8 +79,17 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Unit tests
-        run: ./gradlew connector:test
+      - name: Unit tests with coverage
+        run: ./gradlew connector:testDebugUnitTest
+
+      - name: Upload coverage to Qlty
+        if: always()
+        uses: qltysh/qlty-action/coverage@v2
+        with:
+          token: ${{ secrets.QLTY_COVERAGE_TOKEN }}
+          files: packages/android/connector/build/reports/coverage/test/debug/report.xml
+          format: jacoco
+          incomplete: true
 
   test-flutter-unit:
     needs: changes
@@ -91,16 +103,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: flutter-actions/setup-flutter@v4
-        with:
-          version: "3.32.0"
-          channel: stable
-          cache: true
+      - uses: ./.github/actions/setup-flutter
 
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Test
+      - name: Run library unit tests with coverage
+        run: flutter test --coverage
+
+      - name: Upload coverage to Qlty
+        if: always()
+        uses: qltysh/qlty-action/coverage@v2
+        with:
+          token: ${{ secrets.QLTY_COVERAGE_TOKEN }}
+          files: packages/flutter/coverage/lcov.info
+          format: lcov
+          incomplete: true
+
+      - name: Test example app
         run: cd example && flutter pub get && flutter test
 
   test-ios-unit:
@@ -108,9 +128,6 @@ jobs:
     name: iOS Unit Tests
     runs-on: macos-14
     if: needs.changes.outputs.ios == 'true'
-    defaults:
-      run:
-        working-directory: packages/ios
 
     steps:
       - uses: actions/checkout@v4
@@ -119,5 +136,44 @@ jobs:
         with:
           xcode-version: "16.2"
 
-      - name: Run tests
-        run: swift test
+      - name: Run tests with coverage
+        working-directory: .
+        run: swift test --enable-code-coverage
+
+      - name: Generate lcov coverage report
+        working-directory: .
+        run: |
+          BINARY=$(find .build -name "*PackageTests" -not -path "*checkouts*" -not -name "*.dSYM" | head -1)
+          PROFDATA=$(find .build/debug/codecoverage -name "*.profdata" 2>/dev/null | head -1)
+          if [ -n "$BINARY" ] && [ -n "$PROFDATA" ]; then
+            mkdir -p packages/ios/coverage
+            xcrun llvm-cov export "$BINARY" \
+              -instr-profile "$PROFDATA" \
+              -format lcov \
+              --ignore-filename-regex='.*\.build.*|.*Tests.*' \
+              > packages/ios/coverage/lcov.info
+            echo "Coverage report generated at packages/ios/coverage/lcov.info"
+          else
+            echo "Warning: could not find binary ($BINARY) or profdata ($PROFDATA)"
+          fi
+
+      - name: Upload coverage to Qlty
+        if: always()
+        uses: qltysh/qlty-action/coverage@v2
+        with:
+          token: ${{ secrets.QLTY_COVERAGE_TOKEN }}
+          files: packages/ios/coverage/lcov.info
+          format: lcov
+          incomplete: true
+
+  coverage-complete:
+    name: Coverage Complete
+    runs-on: ubuntu-latest
+    needs: [test, test-android-unit, test-flutter-unit, test-ios-unit]
+    if: always()
+    steps:
+      - name: Signal coverage complete to Qlty
+        uses: qltysh/qlty-action/coverage@v2
+        with:
+          token: ${{ secrets.QLTY_COVERAGE_TOKEN }}
+          command: complete

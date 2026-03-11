@@ -17,7 +17,7 @@ class QuilttConnectorActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val config = QuilttConnectorConnectConfiguration(
             connectorId = "<CONNECTOR_ID>",
-            oauthRedirectUrl = "<YOUR_HTTP_APP_LINK")
+            appLauncherUrl = "<YOUR_HTTP_APP_LINK")
         val token = "<ACCESS_TOKEN>"
         setContent {
             QuilttConnectorContent(config = config, token = token)
@@ -73,7 +73,7 @@ fun QuilttConnectorPreview() {
     QuilttConnectorContent(
         config = QuilttConnectorConnectConfiguration(
             connectorId = "<CONNECTOR_ID>",
-            oauthRedirectUrl = "<YOUR_HTTP_APP_LINK>"
+            appLauncherUrl = "<YOUR_HTTP_APP_LINK>"
         )
     )
 }

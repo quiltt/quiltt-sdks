@@ -29,7 +29,7 @@ class _Example extends State {
   connect() {
     QuilttConnectorConfiguration config = QuilttConnectorConfiguration(
       connectorId: "<CONNECTOR_ID>",
-      oauthRedirectUrl: "<YOUR_HTTPS_APP_LINK>"
+      appLauncherUrl: "<YOUR_HTTPS_APP_LINK>"
     );
 
     QuilttConnector quilttConnector = QuilttConnector();
@@ -63,7 +63,7 @@ class _Example extends State {
     QuilttConnectorConfiguration config = QuilttConnectorConfiguration(
       connectorId: "<CONNECTOR_ID>",
       connectionId: "<CONNECTION_ID>", // To support the Reconnect Flow
-      oauthRedirectUrl: "<YOUR_HTTPS_APP_LINK>"
+      appLauncherUrl: "<YOUR_HTTPS_APP_LINK>"
     );
 
     QuilttConnector quilttConnector = QuilttConnector();
@@ -105,7 +105,7 @@ class _Example extends State {
 
 ## Deep Link Configuration
 
-For OAuth redirect flows to work properly, you must configure deep links in your Flutter app to handle the `oauthRedirectUrl` parameter.
+For OAuth redirect flows to work properly, you must configure deep links in your Flutter app to handle the `appLauncherUrl` parameter.
 
 ### iOS Configuration
 
@@ -207,15 +207,15 @@ class _MyAppState extends State<MyApp> {
 
 **WebView shows white screen after authentication:**
 
-- Verify your `oauthRedirectUrl` is properly configured
+- Verify your `appLauncherUrl` is properly configured
 - Ensure deep link handling is set up correctly
 - Check that your redirect URL uses HTTPS scheme
 
 **OAuth redirect not working:**
 
-- Confirm your app's URL scheme matches the `oauthRedirectUrl`
+- Confirm your app's URL scheme matches the `appLauncherUrl`
 - Verify deep link intent filters are correctly configured
-- Test deep link functionality with `adb shell am start -W -a android.intent.action.VIEW -d "your-redirect-url" your.package.name`
+- Test deep link functionality with `adb shell am start -W -a android.intent.action.VIEW -d "https://example.com/callback" your.package.name`
 
 **Callbacks not firing:**
 
