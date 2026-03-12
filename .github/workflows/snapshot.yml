@@ -50,21 +50,37 @@ jobs:
           fi
           echo "Found $count changeset(s)"
 
+      - name: Validate snapshot tag
+        id: validate_tag
+        env:
+          SNAPSHOT_TAG_INPUT: ${{ inputs.tag }}
+        run: |
+          if [[ ! "$SNAPSHOT_TAG_INPUT" =~ ^[a-z0-9][a-z0-9._-]{0,127}$ ]]; then
+            echo "Invalid snapshot tag: $SNAPSHOT_TAG_INPUT"
+            echo "Snapshot tags must match ^[a-z0-9][a-z0-9._-]{0,127}$"
+            exit 1
+          fi
+
+          echo "tag=$SNAPSHOT_TAG_INPUT" >> "$GITHUB_OUTPUT"
+
       - name: Version packages as snapshot
-        run: pnpm changeset version --snapshot ${{ inputs.tag }}
+        env:
+          SNAPSHOT_TAG: ${{ steps.validate_tag.outputs.tag }}
+        run: pnpm changeset version --snapshot "$SNAPSHOT_TAG"
 
       - name: Build packages
         run: pnpm build:packages
 
       - name: Publish snapshot to npm
-        run: pnpm -r publish --tag ${{ inputs.tag }} --no-git-checks --filter=./packages/**
+        run: pnpm -r publish --tag "$SNAPSHOT_TAG" --no-git-checks --filter=./packages/**
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          SNAPSHOT_TAG: ${{ steps.validate_tag.outputs.tag }}
 
       - name: Write step summary
         uses: actions/github-script@v7
         env:
-          SNAPSHOT_TAG: ${{ inputs.tag }}
+          SNAPSHOT_TAG: ${{ steps.validate_tag.outputs.tag }}
         with:
           script: |
             const fs = require('fs')
