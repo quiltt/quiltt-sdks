@@ -67,6 +67,8 @@ jobs:
 
       - name: Run instrumentation tests
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          QUILTT_API_KEY_SECRET: ${{ secrets.QUILTT_API_KEY_SECRET }}
         with:
           api-level: 34
           target: google_apis
@@ -78,7 +80,8 @@ jobs:
           script: |
             adb shell input keyevent KEYCODE_WAKEUP
             adb shell wm dismiss-keyguard
-            ./gradlew app:connectedDebugAndroidTest
+            ./gradlew app:connectedDebugAndroidTest \
+              -Pandroid.testInstrumentationRunnerArguments.QUILTT_API_KEY_SECRET="$QUILTT_API_KEY_SECRET"
 
       - if: failure()
         name: Upload Android test artifacts

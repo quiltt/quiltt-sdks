@@ -21,8 +21,8 @@ main {
 
 .containers {
   display: flex;
-  height: 75vh;
-  width: 20%;
+  height: 90vh;
+  width: 400px;
   flex-direction: column;
 }
 

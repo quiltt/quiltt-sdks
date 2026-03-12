@@ -29,6 +29,13 @@ export default defineConfig({
       testMatch: '**/*.spec.ts',
       use: {
         ...devices['Desktop Chrome'],
+        // Use system Chrome with automation flags stripped to avoid Cloudflare bot detection
+        // on the OAuth popup pages used by Mock bank
+        channel: 'chrome',
+        launchOptions: {
+          args: ['--disable-blink-features=AutomationControlled'],
+          ignoreDefaultArgs: ['--enable-automation'],
+        },
         baseURL: 'http://localhost:3000',
       },
     },

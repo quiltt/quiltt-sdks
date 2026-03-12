@@ -63,10 +63,10 @@
     "react-native-device-info": "15.0.2"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.5",
+    "@biomejs/biome": "2.4.6",
     "@types/base-64": "1.0.2",
     "@types/lodash.debounce": "4.0.9",
-    "@types/node": "24.11.0",
+    "@types/node": "24.12.0",
     "@types/react": "19.2.14",
     "base-64": "1.0.0",
     "bunchee": "6.9.4",

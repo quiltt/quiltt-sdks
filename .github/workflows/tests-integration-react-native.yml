@@ -196,12 +196,27 @@ jobs:
           sleep 10
           xcrun simctl list devices | grep "iPhone 17 Pro"
 
+      - name: Issue session token
+        id: auth
+        run: |
+          RESPONSE=$(curl -s -X POST https://auth.quiltt.io/v1/users/sessions \
+            -H "Authorization: Bearer ${{ secrets.QUILTT_API_KEY_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"userId":"p_132giKejS3KH0xDyySC0d5"}')
+          TOKEN=$(echo "$RESPONSE" | jq -r '.token // empty')
+          if [ -z "$TOKEN" ]; then
+            echo "Warning: failed to issue session token; connector will show auth screens"
+            TOKEN=""
+          fi
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
       - name: Build app
         run: pnpm run build
         working-directory: ./examples/react-native-expo
         env:
-          EXPO_PUBLIC_QUILTT_CLIENT_ID: test-client-id
-          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: test-auth-token
+          EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
+          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ${{ steps.auth.outputs.token }}
           EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
           EXPO_PUBLIC_INSTITUTION_SEARCH_TERM: test
 
@@ -210,8 +225,8 @@ jobs:
         run: pnpm run test:ios:build
         working-directory: ./examples/react-native-expo
         env:
-          EXPO_PUBLIC_QUILTT_CLIENT_ID: test-client-id
-          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: test-auth-token
+          EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
+          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ${{ steps.auth.outputs.token }}
           EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
           EXPO_PUBLIC_INSTITUTION_SEARCH_TERM: test
 
@@ -220,8 +235,8 @@ jobs:
         run: pnpm run test:android:build
         working-directory: ./examples/react-native-expo
         env:
-          EXPO_PUBLIC_QUILTT_CLIENT_ID: test-client-id
-          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: test-auth-token
+          EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
+          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ${{ steps.auth.outputs.token }}
           EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
           EXPO_PUBLIC_INSTITUTION_SEARCH_TERM: test
 
