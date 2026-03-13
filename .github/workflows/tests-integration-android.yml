@@ -80,8 +80,7 @@ jobs:
           script: |
             adb shell input keyevent KEYCODE_WAKEUP
             adb shell wm dismiss-keyguard
-            ./gradlew app:connectedDebugAndroidTest \
-              -Pandroid.testInstrumentationRunnerArguments.QUILTT_API_KEY_SECRET="$QUILTT_API_KEY_SECRET"
+            ./gradlew app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.QUILTT_API_KEY_SECRET="$QUILTT_API_KEY_SECRET"
 
       - if: failure()
         name: Upload Android test artifacts
