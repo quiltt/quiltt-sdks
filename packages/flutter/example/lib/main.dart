@@ -66,14 +66,14 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void _launchConnector() {
-    String token = "token";
+    const token = String.fromEnvironment('QUILTT_SESSION_TOKEN');
+    const connectorId = String.fromEnvironment('QUILTT_CONNECTOR_ID', defaultValue: '1h6bz4vo9z');
 
     QuilttConnectorConfiguration config = QuilttConnectorConfiguration(
-        connectorId: "connectorId",
+        connectorId: connectorId,
         appLauncherUrl: "https://example.com/callback");
 
-    debugPrint(
-        '_launchConnector: ${config.connectorId}, $config.appLauncherUrl');
+    debugPrint('_launchConnector: ${config.connectorId}, ${config.appLauncherUrl}');
     QuilttConnector quilttConnector = QuilttConnector();
     quilttConnector.authenticate(token);
     quilttConnector.connect(context, config, onEvent: (event) {

@@ -23,7 +23,7 @@
  */
 
 import type { MaybeRefOrGetter } from 'vue'
-import { onMounted, onUnmounted, ref, toValue, watch } from 'vue'
+import { markRaw, onMounted, onUnmounted, ref, shallowRef, toValue, watch } from 'vue'
 
 import type {
   ConnectorSDK,
@@ -127,7 +127,7 @@ export const useQuilttConnector = (
     )
   }
 
-  const connector = ref<ConnectorSDKConnector | undefined>()
+  const connector = shallowRef<ConnectorSDKConnector | undefined>()
   const isLoaded = ref(false)
   const isOpening = ref(false)
   const isConnectorOpen = ref(false)
@@ -210,16 +210,20 @@ export const useQuilttConnector = (
     if (hasChanges) {
       if (currentConnectionId) {
         // Reconnect mode
-        connector.value = Quiltt.reconnect(currentConnectorId, {
-          connectionId: currentConnectionId,
-          appLauncherUrl: currentAppLauncherUri,
-        })
+        connector.value = markRaw(
+          Quiltt.reconnect(currentConnectorId, {
+            connectionId: currentConnectionId,
+            appLauncherUrl: currentAppLauncherUri,
+          })
+        )
       } else {
         // Connect mode
-        connector.value = Quiltt.connect(currentConnectorId, {
-          institution: currentInstitution,
-          appLauncherUrl: currentAppLauncherUri,
-        })
+        connector.value = markRaw(
+          Quiltt.connect(currentConnectorId, {
+            institution: currentInstitution,
+            appLauncherUrl: currentAppLauncherUri,
+          })
+        )
       }
 
       connectorCreated = true

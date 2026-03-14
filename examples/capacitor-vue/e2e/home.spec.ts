@@ -27,5 +27,5 @@ test('renders Quiltt button and inline connector', async ({ page }) => {
     )
   }, connectorOrigin)
 
-  await expect(page.getByText('Load')).toBeVisible()
+  await expect(page.getByText('Load').first()).toBeVisible()
 })
