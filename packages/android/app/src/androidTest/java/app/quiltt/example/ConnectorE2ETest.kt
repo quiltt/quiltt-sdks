@@ -1,7 +1,6 @@
 package app.quiltt.example
 
 import android.content.Intent
-import android.util.Log
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
@@ -16,14 +15,11 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
-import org.json.JSONObject
 import org.junit.FixMethodOrder
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.MethodSorters
-import java.net.HttpURLConnection
-import java.net.URL
 
 /**
  * Instrumented end-to-end tests for the Quiltt Connector example app.
@@ -35,9 +31,9 @@ import java.net.URL
  *  - The WebView container that renders the Quiltt Connector is displayed
  *  - A pre-authenticated connector skips auth and reaches "Log in at Mock Bank"
  *
- * For the authenticated test, pass your API key as an instrumentation argument:
+ * For the authenticated test, pass a pre-issued session token as an instrumentation argument:
  *   ./gradlew app:connectedDebugAndroidTest \
- *     -Pandroid.testInstrumentationRunnerArguments.QUILTT_API_KEY_SECRET=<key>
+ *     -Pandroid.testInstrumentationRunnerArguments.QUILTT_SESSION_TOKEN=<token>
  *
  * Tests are ordered by name (ascending). The WebView/UIAutomator2 test is
  * prefixed 'v' so it runs after all Espresso tests (a, l, t), preventing the
@@ -105,19 +101,17 @@ class ConnectorE2ETest {
     /**
      * Verifies that a pre-authenticated connector loads without auth screens.
      *
-     * Issues a real session token for the sandbox test profile, then launches
-     * QuilttConnectorActivity directly with the token. Waits for the connector
-     * WebView to reach "Log in at Mock Bank", confirming the SDK accepted the
-     * token and the connector skipped the email/OTP auth flow entirely.
+     * Receives a pre-issued session token via instrumentation argument QUILTT_SESSION_TOKEN,
+     * launches QuilttConnectorActivity with the token, and waits for the connector WebView to
+     * reach "Log in at Mock Bank" — confirming the SDK accepted the token and skipped auth.
      *
-     * Skipped automatically when QUILTT_API_KEY_SECRET is not provided.
+     * Skipped automatically when QUILTT_SESSION_TOKEN is not provided or is blank.
      */
     @Test
     fun verifyPreAuthConnectorReachesBankScreen() {
-        val apiKey = InstrumentationRegistry.getArguments()
-            .getString("QUILTT_API_KEY_SECRET").takeIf { !it.isNullOrBlank() } ?: return
+        val token = InstrumentationRegistry.getArguments()
+            .getString("QUILTT_SESSION_TOKEN").takeIf { !it.isNullOrBlank() } ?: return
 
-        val token = issueSessionToken(apiKey)
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent = Intent(context, QuilttConnectorActivity::class.java).apply {
             putExtra("connectorId", "1h6bz4vo9z")
@@ -131,38 +125,6 @@ class ConnectorE2ETest {
                 60_000L
             )
             assert(heading != null) { "Expected 'Log in at Mock Bank' in connector WebView" }
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------------------
-
-    /**
-     * Issues a Quiltt session token for the sandbox test profile via the auth API.
-     * Safe to call from the Instrumentation thread (not the main UI thread).
-     */
-    private fun issueSessionToken(apiKey: String): String {
-        val url = URL("https://auth.quiltt.io/v1/users/sessions")
-        val conn = url.openConnection() as HttpURLConnection
-        return try {
-            conn.requestMethod = "POST"
-            conn.setRequestProperty("Authorization", "Bearer $apiKey")
-            conn.setRequestProperty("Content-Type", "application/json")
-            conn.doOutput = true
-            conn.outputStream.use { os ->
-                os.write("""{"userId":"p_132giKejS3KH0xDyySC0d5"}""".toByteArray())
-            }
-            val code = conn.responseCode
-            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-            val body = stream.bufferedReader().readText()
-            Log.d("ConnectorE2ETest", "Auth response ($code): $body")
-            check(code in 200..299) { "Auth API returned HTTP $code: $body" }
-            val json = JSONObject(body)
-            check(json.has("token") && !json.isNull("token")) { "Auth API 200 response missing 'token': $body" }
-            json.getString("token")
-        } finally {
-            conn.disconnect()
         }
     }
 }
