@@ -117,10 +117,9 @@ test.describe('Connector: Full Bank Connection', () => {
 
     // The Mock bank OAuth popup shows an Authorize button; click it to approve the connection
     await popup.waitForLoadState('load').catch(() => {})
-    await popup
-      .getByRole('button', { name: 'Authorize' })
-      .click({ timeout: 15000 })
-      .catch(() => {})
+    const authorizeBtn = popup.getByRole('button', { name: 'Authorize' })
+    await expect(authorizeBtn).toBeVisible({ timeout: 20000 })
+    await authorizeBtn.click()
 
     // Wait for the popup to close, then let the connector process the callback
     await popup.waitForEvent('close', { timeout: 30000 })

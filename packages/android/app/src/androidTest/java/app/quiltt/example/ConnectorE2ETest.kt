@@ -115,7 +115,7 @@ class ConnectorE2ETest {
     @Test
     fun verifyPreAuthConnectorReachesBankScreen() {
         val apiKey = InstrumentationRegistry.getArguments()
-            .getString("QUILTT_API_KEY_SECRET") ?: return
+            .getString("QUILTT_API_KEY_SECRET").takeIf { !it.isNullOrBlank() } ?: return
 
         val token = issueSessionToken(apiKey)
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -157,7 +157,10 @@ class ConnectorE2ETest {
             val stream = if (code in 200..299) conn.inputStream else conn.errorStream
             val body = stream.bufferedReader().readText()
             Log.d("ConnectorE2ETest", "Auth response ($code): $body")
-            JSONObject(body).getString("token")
+            check(code in 200..299) { "Auth API returned HTTP $code: $body" }
+            val json = JSONObject(body)
+            check(json.has("token") && !json.isNull("token")) { "Auth API 200 response missing 'token': $body" }
+            json.getString("token")
         } finally {
             conn.disconnect()
         }
