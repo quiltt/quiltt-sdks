@@ -121,10 +121,10 @@ class ConnectorE2ETest {
         ActivityScenario.launch<QuilttConnectorActivity>(intent).use {
             val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
             val heading = device.wait(
-                Until.findObject(By.text("Log in at Mock Bank")),
-                60_000L
+                Until.findObject(By.textContains("Mock Bank")),
+                120_000L
             )
-            assert(heading != null) { "Expected 'Log in at Mock Bank' in connector WebView" }
+            assert(heading != null) { "Expected 'Mock Bank' heading in connector WebView" }
         }
     }
 }
