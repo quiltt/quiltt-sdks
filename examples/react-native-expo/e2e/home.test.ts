@@ -32,7 +32,7 @@ const launchAppWithRetry = async () => {
   throw lastError
 }
 
-describe('App Navigation and Basic Features', () => {
+describe('E2E Tests', () => {
   beforeAll(async () => {
     await launchAppWithRetry()
   }, 120000)
@@ -40,12 +40,6 @@ describe('App Navigation and Basic Features', () => {
   it('should launch app without crashing', async () => {
     await device.takeScreenshot('app-launched')
   }, 30000)
-})
-
-describe('Connector: Full bank connection', () => {
-  beforeAll(async () => {
-    await launchAppWithRetry()
-  }, 120000)
 
   /**
    * Verifies that the pre-authenticated connector loads without auth screens.
@@ -56,7 +50,10 @@ describe('Connector: Full bank connection', () => {
    * should reach "Log in at Mock Bank" directly.
    */
   it('should load the connector and reach the Mock bank screen', async () => {
-    // Navigate to the Connector tab
+    // Wait for the tab bar to be fully rendered before tapping
+    await waitFor(element(by.text('Connector')))
+      .toBeVisible()
+      .withTimeout(10000)
     await element(by.text('Connector')).tap()
 
     // Wait for the quiltt-connector container to appear
