@@ -17,9 +17,11 @@ import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import org.json.JSONObject
+import org.junit.FixMethodOrder
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.junit.runners.MethodSorters
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -36,8 +38,13 @@ import java.net.URL
  * For the authenticated test, pass your API key as an instrumentation argument:
  *   ./gradlew app:connectedDebugAndroidTest \
  *     -Pandroid.testInstrumentationRunnerArguments.QUILTT_API_KEY_SECRET=<key>
+ *
+ * Tests are ordered by name (ascending). The WebView/UIAutomator2 test is
+ * prefixed 'v' so it runs after all Espresso tests (a, l, t), preventing the
+ * long UIAutomator2 wait from corrupting window focus for subsequent tests.
  */
 @RunWith(AndroidJUnit4::class)
+@FixMethodOrder(MethodSorters.NAME_ASCENDING)
 class ConnectorE2ETest {
 
     @get:Rule
@@ -106,7 +113,7 @@ class ConnectorE2ETest {
      * Skipped automatically when QUILTT_API_KEY_SECRET is not provided.
      */
     @Test
-    fun connectorLoadsWithRealToken() {
+    fun verifyPreAuthConnectorReachesBankScreen() {
         val apiKey = InstrumentationRegistry.getArguments()
             .getString("QUILTT_API_KEY_SECRET") ?: return
 
@@ -121,7 +128,7 @@ class ConnectorE2ETest {
             val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
             val heading = device.wait(
                 Until.findObject(By.text("Log in at Mock Bank")),
-                30_000L
+                60_000L
             )
             assert(heading != null) { "Expected 'Log in at Mock Bank' in connector WebView" }
         }

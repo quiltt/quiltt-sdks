@@ -41,7 +41,7 @@
     "vitest": "4.0.18",
     "vitest-react-native": "0.1.5"
   },
-  "packageManager": "pnpm@10.32.0",
+  "packageManager": "pnpm@10.32.1",
   "pnpm": {
     "onlyBuiltDependencies": [
       "@parcel/watcher",

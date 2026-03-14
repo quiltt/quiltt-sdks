@@ -147,7 +147,6 @@ class _WebViewPage {
     }
   }
 
-  // TODO: Reimplement this once we have a better collection of URLs
   // final _shouldRenderList = [
   //   'quiltt.app',
   //   'quiltt.dev',
