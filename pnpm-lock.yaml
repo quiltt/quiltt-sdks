@@ -6,6 +6,7 @@ settings:
 
 overrides:
   iltorb: npm:noop2@^2.0.0
+  undici@<=7.24.1: 7.24.1
 
 importers:
 
@@ -8343,9 +8344,9 @@ packages:
   undici-types@7.16.0:
     resolution: {integrity: sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw==}
 
-  undici@6.23.0:
-    resolution: {integrity: sha512-VfQPToRA5FZs/qJxLIinmU59u0r7LXqoJkCzinq3ckNJp3vKEh7jTWN589YQ5+aoAC/TGRLyJLCPKcLQbM8r9g==}
-    engines: {node: '>=18.17'}
+  undici@7.24.1:
+    resolution: {integrity: sha512-5xoBibbmnjlcR3jdqtY2Lnx7WbrD/tHlT01TmvqZUFVc9Q1w4+j5hbnapTqbcXITMH1ovjq/W7BkqBilHiVAaA==}
+    engines: {node: '>=20.18.1'}
 
   unenv@2.0.0-rc.24:
     resolution: {integrity: sha512-i7qRCmY42zmCwnYlh9H2SvLEypEFGye5iRmEMKjcGi7zk9UquigRjFtTLz0TYqr0ZGLZhaMHl/foy1bZR+Cwlw==}
@@ -10129,7 +10130,7 @@ snapshots:
       structured-headers: 0.4.1
       tar: 7.5.11
       terminal-link: 2.1.1
-      undici: 6.23.0
+      undici: 7.24.1
       wrap-ansi: 7.0.0
       ws: 8.19.0
     optionalDependencies:
@@ -17837,7 +17838,7 @@ snapshots:
 
   undici-types@7.16.0: {}
 
-  undici@6.23.0: {}
+  undici@7.24.1: {}
 
   unenv@2.0.0-rc.24:
     dependencies:
