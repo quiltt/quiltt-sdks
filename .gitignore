@@ -59,5 +59,6 @@ packages/ios/Pods/
 
 # Tests
 coverage/**/*
+**/coverage/**/*
 **/test-results/**/*
 **/playwright-report/**/*

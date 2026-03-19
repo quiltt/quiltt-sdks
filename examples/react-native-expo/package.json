@@ -19,9 +19,12 @@
     "test:ios": "pnpm run build && pnpm run test:ios:build && pnpm run test:ios:run",
     "test:android:build": "detox build --configuration android.emulator.debug",
     "test:android:run": "detox test -c android.emulator.debug",
-    "test:android:run:ci": "detox test --configuration android.emulator.debug --cleanup --headless --record-logs all --retries 1",
+    "test:android:run:ci": "detox test --configuration android.emulator.debug --headless --record-logs all --retries 1",
     "test:android": "pnpm run build && pnpm run test:android:build && pnpm run test:android:run",
     "test:e2e": "pnpm run build && (pnpm run test:ios:build & pnpm run test:android:build & wait) && (pnpm run test:ios:run & pnpm run test:android:run & wait)",
+    "test:maestro:connector": "maestro test maestro/connector-flow.yaml",
+    "test:maestro:oauth": "maestro test maestro/oauth-callback-flow.yaml",
+    "test:maestro": "maestro test maestro",
     "test": "node scripts/test.js",
     "lint": "TIMING=1 biome check src/ e2e/ scripts/ plugins/ --fix",
     "typecheck": "tsc --project tsconfig.json --noEmit"
@@ -60,11 +63,11 @@
     "react-native-worklets": "0.5.1"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.5",
+    "@biomejs/biome": "2.4.7",
     "@types/jest": "^29.5.14",
-    "@types/node": "24.11.0",
+    "@types/node": "24.12.0",
     "@types/react": "19.2.14",
-    "detox": "20.46.0",
+    "detox": "20.47.0",
     "jest": "^29.7.0",
     "ts-jest": "^29.4.6",
     "typescript": "5.9.3"

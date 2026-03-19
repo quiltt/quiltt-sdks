@@ -2,9 +2,9 @@
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "verbatimModuleSyntax": false,
-    "module": "commonjs",
-    "moduleResolution": "node",
-    "isolatedModules": false,
+    "module": "node16",
+    "moduleResolution": "node16",
+    "isolatedModules": true,
     "types": ["jest", "detox/globals", "node"]
   },
   "include": ["./**/*.ts"]
