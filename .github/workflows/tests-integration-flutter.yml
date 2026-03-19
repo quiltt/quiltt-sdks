@@ -30,7 +30,7 @@ jobs:
           - platform: android
             os: ubuntu-latest
           - platform: ios
-            os: macos-14
+            os: macos-latest
     defaults:
       run:
         working-directory: packages/flutter/example
@@ -80,6 +80,21 @@ jobs:
       - name: Test
         run: flutter test
 
+      - name: Issue session token
+        id: auth
+        run: |
+          RESPONSE=$(curl -s -X POST https://auth.quiltt.io/v1/users/sessions \
+            -H "Authorization: Bearer ${{ secrets.QUILTT_API_KEY_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"userId":"p_132giKejS3KH0xDyySC0d5"}')
+          TOKEN=$(echo "$RESPONSE" | jq -r '.token // empty')
+          if [ -z "$TOKEN" ]; then
+            echo "Warning: failed to issue session token; integration tests will run unauthenticated"
+            TOKEN=""
+          fi
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
       - name: Run integration tests (Android)
         if: matrix.platform == 'android'
         uses: reactivecircus/android-emulator-runner@v2
@@ -93,7 +108,7 @@ jobs:
           working-directory: packages/flutter/example
           script: |
             flutter devices
-            bash -lc 'set -o pipefail; flutter test integration_test/app_test.dart -d emulator-5554 2>&1 | tee flutter-integration-android.log'
+            bash -lc 'set -o pipefail; flutter test integration_test/app_test.dart -d emulator-5554 --dart-define=QUILTT_SESSION_TOKEN="${{ steps.auth.outputs.token }}" --dart-define=QUILTT_CONNECTOR_ID=1h6bz4vo9z 2>&1 | tee flutter-integration-android.log'
 
       - name: Run integration tests (iOS)
         if: matrix.platform == 'ios'
@@ -121,10 +136,16 @@ jobs:
 
           xcrun simctl boot "$DEVICE_ID" || true
           xcrun simctl bootstatus "$DEVICE_ID" -b
+          # Give SpringBoard time to finish initializing after OS boot reports done;
+          # without this, simctl install fails with "The operation was canceled".
+          sleep 15
 
           flutter devices
           set -o pipefail
-          flutter test integration_test/app_test.dart -d "$DEVICE_ID" 2>&1 | tee flutter-integration-ios.log
+          flutter test integration_test/app_test.dart -d "$DEVICE_ID" \
+            --dart-define=QUILTT_SESSION_TOKEN="${{ steps.auth.outputs.token }}" \
+            --dart-define=QUILTT_CONNECTOR_ID=1h6bz4vo9z \
+            2>&1 | tee flutter-integration-ios.log
 
       - if: failure() && matrix.platform == 'android'
         name: Upload Flutter Android test artifacts

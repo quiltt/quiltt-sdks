@@ -117,6 +117,10 @@ vi.mock('react-native-webview', () => ({
   WebView: (props: any) => React.createElement('WebView', props),
 }))
 
+vi.mock('react-native-safe-area-context', () => ({
+  SafeAreaView: (props: any) => React.createElement('SafeAreaView', props),
+}))
+
 // Mock react-native-url-polyfill to avoid module resolution issues
 vi.mock('react-native-url-polyfill', () => ({
   // Export URL and URLSearchParams from global

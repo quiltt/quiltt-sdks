@@ -3,11 +3,6 @@ module.exports = {
   preset: 'ts-jest',
   rootDir: '..',
   testMatch: ['<rootDir>/e2e/**/*.test.ts'],
-  globals: {
-    'ts-jest': {
-      tsconfig: '<rootDir>/e2e/tsconfig.json',
-    },
-  },
   testTimeout: 60000,
   maxWorkers: 1,
   globalSetup: 'detox/runners/jest/globalSetup',

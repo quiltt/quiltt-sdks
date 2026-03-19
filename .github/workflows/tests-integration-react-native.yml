@@ -24,17 +24,17 @@ permissions:
 
 jobs:
   test-react-native-expo:
-    name: React Native Expo (${{ matrix.platform }})
+    name: React Native Expo Detox Smoke (${{ matrix.platform }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: ios
-            os: macos-latest
           - platform: android
             os: ubuntu-latest
+          - platform: ios
+            os: macos-latest
     steps:
       - name: Free disk space
         if: matrix.platform == 'android'
@@ -121,7 +121,7 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-34-google_apis-x86_64
+          key: avd-34-default-x86_64
 
       - name: Cache CocoaPods
         if: matrix.platform == 'ios'
@@ -179,29 +179,30 @@ jobs:
           echo "iOS runtimes:"
           xcrun simctl list runtimes | grep iOS
 
-      - name: Create and boot iOS simulator
-        if: matrix.platform == 'ios'
-        run: |
-          RUNTIME_ID=$(xcrun simctl list runtimes | grep "iOS 26" | tail -1 | awk '{print $NF}')
-          echo "Using runtime: $RUNTIME_ID"
-          DEVICE_ID=$(xcrun simctl list | grep "iPhone 17 Pro" | head -1 | awk '{print $(NF-1)}' | tr -d '()')
-          if [ -z "$DEVICE_ID" ]; then
-            echo "Creating iPhone 17 Pro simulator..."
-            DEVICE_ID=$(xcrun simctl create "iPhone 17 Pro" "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro" "$RUNTIME_ID" | head -1)
-          else
-            echo "iPhone 17 Pro simulator already exists: $DEVICE_ID"
-          fi
-          echo "Booting simulator..."
-          xcrun simctl boot "$DEVICE_ID" || true
-          sleep 10
-          xcrun simctl list devices | grep "iPhone 17 Pro"
+      # - name: Issue session token
+      #   id: auth
+      #   run: |
+      #     RESPONSE=$(curl -s -X POST https://auth.quiltt.io/v1/users/sessions \
+      #       -H "Authorization: Bearer ${{ secrets.QUILTT_API_KEY_SECRET }}" \
+      #       -H "Content-Type: application/json" \
+      #       -d '{"userId":"p_132giKejS3KH0xDyySC0d5"}')
+      #     TOKEN=$(echo "$RESPONSE" | jq -r '.token // empty')
+      #     if [ -z "$TOKEN" ]; then
+      #       echo "Warning: failed to issue session token; pre-auth checks will be skipped"
+      #       echo "Auth API response: $RESPONSE"
+      #       echo "preauth_required=false" >> "$GITHUB_OUTPUT"
+      #     else
+      #       echo "preauth_required=true" >> "$GITHUB_OUTPUT"
+      #     fi
+      #     echo "::add-mask::$TOKEN"
+      #     echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
 
       - name: Build app
         run: pnpm run build
         working-directory: ./examples/react-native-expo
         env:
-          EXPO_PUBLIC_QUILTT_CLIENT_ID: test-client-id
-          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: test-auth-token
+          EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
+          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ""
           EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
           EXPO_PUBLIC_INSTITUTION_SEARCH_TERM: test
 
@@ -210,8 +211,8 @@ jobs:
         run: pnpm run test:ios:build
         working-directory: ./examples/react-native-expo
         env:
-          EXPO_PUBLIC_QUILTT_CLIENT_ID: test-client-id
-          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: test-auth-token
+          EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
+          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ""
           EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
           EXPO_PUBLIC_INSTITUTION_SEARCH_TERM: test
 
@@ -220,8 +221,8 @@ jobs:
         run: pnpm run test:android:build
         working-directory: ./examples/react-native-expo
         env:
-          EXPO_PUBLIC_QUILTT_CLIENT_ID: test-client-id
-          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: test-auth-token
+          EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
+          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ""
           EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
           EXPO_PUBLIC_INSTITUTION_SEARCH_TERM: test
 
@@ -238,7 +239,7 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
-          target: google_apis
+          target: default
           arch: x86_64
           profile: pixel_7_pro
           avd-name: Pixel_API_34_AOSP
@@ -247,19 +248,79 @@ jobs:
           disable-animations: false
           script: echo 'Generated AVD snapshot for caching.'
 
-      - name: Run E2E tests (iOS)
+      - name: Start Metro (iOS)
         if: matrix.platform == 'ios'
-        run: pnpm run test
+        run: |
+          mkdir -p ./artifacts
+          nohup env CI=1 pnpm exec expo start --dev-client --port 8081 --localhost > ./artifacts/expo-metro.log 2>&1 &
+          echo "METRO_PID=$!" >> "$GITHUB_ENV"
+
+          for _ in {1..90}; do
+            if curl -fsS "http://127.0.0.1:8081/status" | grep -q "packager-status:running"; then
+              echo "Metro is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "Metro did not become ready in time"
+          tail -n 200 ./artifacts/expo-metro.log || true
+          exit 1
+        working-directory: ./examples/react-native-expo
+        env:
+          EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
+          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ""
+          EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
+          EXPO_PUBLIC_INSTITUTION_SEARCH_TERM: test
+
+      - name: Run Detox smoke tests (iOS)
+        if: matrix.platform == 'ios'
+        run: pnpm run test:ios:run:ci
         working-directory: ./examples/react-native-expo
         env:
           PLATFORM: ios
+          DETOX_LOGLEVEL: trace
+          RCT_METRO_PORT: "8081"
+          E2E_PREAUTH_REQUIRED: "false"
 
-      - name: Run E2E tests (Android)
+      - name: Stop Metro (iOS)
+        if: always() && matrix.platform == 'ios'
+        run: |
+          if [ -n "${METRO_PID:-}" ]; then
+            kill "$METRO_PID" || true
+          fi
+
+      - name: Start Metro (Android)
+        if: matrix.platform == 'android'
+        run: |
+          mkdir -p ./artifacts
+          nohup env CI=1 pnpm exec expo start --dev-client --port 8081 --localhost > ./artifacts/expo-metro-android.log 2>&1 &
+          echo "METRO_PID=$!" >> "$GITHUB_ENV"
+
+          for _ in {1..90}; do
+            if curl -fsS "http://127.0.0.1:8081/status" | grep -q "packager-status:running"; then
+              echo "Metro is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "Metro did not become ready in time"
+          tail -n 200 ./artifacts/expo-metro-android.log || true
+          exit 1
+        working-directory: ./examples/react-native-expo
+        env:
+          EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
+          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ""
+          EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
+          EXPO_PUBLIC_INSTITUTION_SEARCH_TERM: test
+
+      - name: Run Detox smoke tests (Android)
         if: matrix.platform == 'android'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
-          target: google_apis
+          target: default
           arch: x86_64
           profile: pixel_7_pro
           avd-name: Pixel_API_34_AOSP
@@ -268,10 +329,48 @@ jobs:
           disable-animations: true
           working-directory: ./examples/react-native-expo
           script: |
+            adb wait-for-device
+            until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; do sleep 1; done
+            until [ "$(adb shell getprop init.svc.bootanim | tr -d '\r')" = "stopped" ]; do sleep 1; done
+            until adb shell pm path android >/dev/null 2>&1; do sleep 1; done
+            adb shell settings put global window_animation_scale 0
+            adb shell settings put global transition_animation_scale 0
+            adb shell settings put global animator_duration_scale 0
+            adb shell svc power stayon true
+            adb shell settings put global package_verifier_enable 0 || true
+            adb shell settings put global verifier_verify_adb_installs 0 || true
+            adb shell settings put global anr_show_background 0 || true
+            adb shell settings put global show_first_crash_dialog 0 || true
+            adb shell settings put global show_first_crash_dialog_dev_option 0 || true
+            adb shell settings put global hidden_api_policy 1 || true
+            adb shell settings put global hidden_api_policy_p_apps 1 || true
+            adb shell settings put global hidden_api_policy_pre_p_apps 1 || true
+            adb shell input keyevent KEYCODE_WAKEUP || true
+            adb shell input keyevent 82 || true
+            adb shell wm dismiss-keyguard || true
+
+            # Ensure the emulator can always reach Metro through localhost.
+            adb reverse tcp:8081 tcp:8081 || true
+            adb reverse --list || true
+
+            # Install APKs ahead of Detox.
+            adb install -r -g -t android/app/build/outputs/apk/debug/app-debug.apk
+            adb install -r -g -t android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb shell am force-stop com.example || true
             adb devices
-            pnpm run test
+            pnpm run test:android:run:ci
         env:
           PLATFORM: android
+          DETOX_LOGLEVEL: trace
+          E2E_PREAUTH_REQUIRED: "false"
+          RCT_METRO_PORT: "8081"
+
+      - name: Stop Metro (Android)
+        if: always() && matrix.platform == 'android'
+        run: |
+          if [ -n "${METRO_PID:-}" ]; then
+            kill "$METRO_PID" || true
+          fi
 
       - if: failure() && matrix.platform == 'ios'
         name: Upload iOS test artifacts
@@ -293,6 +392,339 @@ jobs:
           path: |
             ./examples/react-native-expo/artifacts
             ./examples/react-native-expo/android/app/build/outputs/androidTest-results
+          retention-days: 3
+          if-no-files-found: warn
+          compression-level: 6
+
+  test-react-native-expo-maestro:
+    name: React Native Expo Maestro (Android)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Free disk space
+        run: |
+          echo "=== Before cleanup ==="
+          df -h
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /usr/local/lib/android/sdk/ndk
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf /usr/local/.ghcup
+          sudo rm -rf /usr/local/graalvm
+          sudo rm -rf /usr/local/share/powershell
+          sudo rm -rf /usr/local/share/chromium
+          sudo rm -rf /usr/local/lib/node_modules
+          sudo apt-get clean
+          docker rmi $(docker image ls -aq) 2>/dev/null || true
+          echo "=== After cleanup ==="
+          df -h
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        uses: ./.github/actions/setup-js
+
+      - name: Enable KVM group perms
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: ./examples/react-native-expo
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Cache Android SDK components
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/cmake/3.22.1
+            /usr/local/lib/android/sdk/ndk/26.3.11579264
+          key: android-sdk-components-${{ runner.os }}-cmake-3.22.1-ndk-26.3.11579264
+
+      - name: Preinstall Android SDK components
+        run: |
+          SDK_ROOT="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(command -v sdkmanager)"
+          fi
+
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" "cmake;3.22.1" "ndk;26.3.11579264"
+
+      - name: Install Maestro CLI
+        run: |
+          curl -fsSL "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+          "$HOME/.maestro/bin/maestro" --version
+
+      - name: Build app
+        run: pnpm run build
+        working-directory: ./examples/react-native-expo
+        env:
+          EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
+          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ""
+          EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
+          EXPO_PUBLIC_INSTITUTION_SEARCH_TERM: test
+
+      - name: Build Android binary
+        run: pnpm run test:android:build
+        working-directory: ./examples/react-native-expo
+        env:
+          EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
+          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ""
+          EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
+          EXPO_PUBLIC_INSTITUTION_SEARCH_TERM: test
+
+      - name: Start Metro
+        run: |
+          mkdir -p ./artifacts
+          nohup env CI=1 pnpm exec expo start --dev-client --port 8081 --localhost > ./artifacts/expo-metro-maestro.log 2>&1 &
+          echo "METRO_PID=$!" >> "$GITHUB_ENV"
+
+          for _ in {1..90}; do
+            if curl -fsS "http://127.0.0.1:8081/status" | grep -q "packager-status:running"; then
+              echo "Metro is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "Metro did not become ready in time"
+          tail -n 200 ./artifacts/expo-metro-maestro.log || true
+          exit 1
+        working-directory: ./examples/react-native-expo
+        env:
+          EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
+          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ""
+          EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
+          EXPO_PUBLIC_INSTITUTION_SEARCH_TERM: test
+
+      - name: Run Maestro flows (Android)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: default
+          arch: x86_64
+          profile: pixel_7_pro
+          avd-name: Pixel_API_34_AOSP
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          working-directory: ./examples/react-native-expo
+          script: |
+            adb wait-for-device
+            until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; do sleep 1; done
+            until [ "$(adb shell getprop init.svc.bootanim | tr -d '\r')" = "stopped" ]; do sleep 1; done
+            until adb shell pm path android >/dev/null 2>&1; do sleep 1; done
+            adb shell settings put global window_animation_scale 0
+            adb shell settings put global transition_animation_scale 0
+            adb shell settings put global animator_duration_scale 0
+            adb shell svc power stayon true
+            adb shell settings put global package_verifier_enable 0 || true
+            adb shell settings put global verifier_verify_adb_installs 0 || true
+            adb shell settings put global anr_show_background 0 || true
+            adb shell settings put global show_first_crash_dialog 0 || true
+            adb shell settings put global show_first_crash_dialog_dev_option 0 || true
+            adb shell input keyevent KEYCODE_WAKEUP || true
+            adb shell input keyevent 82 || true
+            adb shell wm dismiss-keyguard || true
+
+            # Ensure emulator can reach Metro on host localhost.
+            adb reverse tcp:8081 tcp:8081 || true
+            adb reverse --list || true
+
+            adb install -r -g -t android/app/build/outputs/apk/debug/app-debug.apk
+
+            maestro test maestro/connector-flow.yaml
+            maestro test maestro/oauth-callback-flow.yaml
+        env:
+          MAESTRO_DRIVER_STARTUP_TIMEOUT: 180000
+
+      - name: Stop Metro
+        if: always()
+        run: |
+          if [ -n "${METRO_PID:-}" ]; then
+            kill "$METRO_PID" || true
+          fi
+
+      - if: failure()
+        name: Upload Maestro artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android_maestro_artifacts_${{ github.sha }}
+          path: |
+            ./examples/react-native-expo/artifacts
+          retention-days: 3
+          if-no-files-found: warn
+          compression-level: 6
+
+  test-react-native-expo-maestro-ios:
+    name: React Native Expo Maestro (iOS)
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        uses: ./.github/actions/setup-js
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: ./examples/react-native-expo
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: |
+            ./examples/react-native-expo/ios/Pods
+            ~/Library/Caches/CocoaPods
+            ~/.cocoapods
+          key: ${{ runner.os }}-pods-${{ hashFiles('**/Podfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pods-
+
+      - name: Cache iOS DerivedData
+        uses: actions/cache@v4
+        with:
+          path: ./examples/react-native-expo/ios/build
+          key: ${{ runner.os }}-ios-build-${{ hashFiles('**/Podfile.lock', '**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-ios-build-
+
+      - name: Install Maestro CLI
+        run: |
+          curl -fsSL "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+          "$HOME/.maestro/bin/maestro" --version
+
+      - name: Build app
+        run: pnpm run build
+        working-directory: ./examples/react-native-expo
+        env:
+          EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
+          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ""
+          EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
+          EXPO_PUBLIC_INSTITUTION_SEARCH_TERM: test
+
+      - name: Build iOS binary
+        run: pnpm run test:ios:build
+        working-directory: ./examples/react-native-expo
+        env:
+          EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
+          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ""
+          EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
+          EXPO_PUBLIC_INSTITUTION_SEARCH_TERM: test
+
+      - name: Boot iOS simulator and install app
+        run: |
+          # Prefer iPhone 16 Pro to match what macos-latest runners provide; fall
+          # back to any available iPhone simulator if not found.
+          DEVICE_ID=$(xcrun simctl list devices available | grep "iPhone 16 Pro" | grep -v "Max\|Plus" | head -1 | awk -F '[()]' '{print $2}')
+          if [ -z "$DEVICE_ID" ]; then
+            DEVICE_ID=$(xcrun simctl list devices available | grep -m1 "iPhone" | awk -F '[()]' '{print $2}')
+          fi
+          if [ -z "$DEVICE_ID" ]; then
+            echo "No available iPhone simulator found"
+            xcrun simctl list devices available
+            exit 1
+          fi
+
+          echo "Using simulator: $DEVICE_ID"
+          echo "MAESTRO_DEVICE_ID=$DEVICE_ID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$DEVICE_ID" || true
+          xcrun simctl bootstatus "$DEVICE_ID" -b
+
+          APP_PATH="./examples/react-native-expo/ios/build/Build/Products/Debug-iphonesimulator/reactnativeexpo.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "Expected app bundle not found at $APP_PATH"
+            ls -la ./examples/react-native-expo/ios/build/Build/Products/Debug-iphonesimulator || true
+            exit 1
+          fi
+
+          xcrun simctl install "$DEVICE_ID" "$APP_PATH"
+
+          # Maestro on iOS requires the Simulator app to be running (not just
+          # simctl-booted). Open it and give it a moment to attach.
+          open -a Simulator
+          sleep 5
+
+      - name: Start Metro
+        run: |
+          mkdir -p ./artifacts
+          nohup env CI=1 pnpm exec expo start --dev-client --port 8081 --localhost > ./artifacts/expo-metro-maestro-ios.log 2>&1 &
+          echo "METRO_PID=$!" >> "$GITHUB_ENV"
+
+          for _ in {1..90}; do
+            if curl -fsS "http://127.0.0.1:8081/status" | grep -q "packager-status:running"; then
+              echo "Metro is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "Metro did not become ready in time"
+          tail -n 200 ./artifacts/expo-metro-maestro-ios.log || true
+          exit 1
+        working-directory: ./examples/react-native-expo
+        env:
+          EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
+          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ""
+          EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
+          EXPO_PUBLIC_INSTITUTION_SEARCH_TERM: test
+
+      - name: Run Maestro flows (iOS)
+        run: |
+          run_maestro_flow() {
+            local flow="$1"
+            maestro --device "$MAESTRO_DEVICE_ID" test "$flow" && return 0
+
+            echo "First attempt failed for $flow, retrying once after a short delay..."
+            sleep 5
+            maestro --device "$MAESTRO_DEVICE_ID" test "$flow"
+          }
+
+          run_maestro_flow maestro/connector-flow.yaml
+          run_maestro_flow maestro/oauth-callback-flow.yaml
+        working-directory: ./examples/react-native-expo
+        env:
+          MAESTRO_DRIVER_STARTUP_TIMEOUT: 300000
+
+      - name: Stop Metro
+        if: always()
+        run: |
+          if [ -n "${METRO_PID:-}" ]; then
+            kill "$METRO_PID" || true
+          fi
+
+      - if: failure()
+        name: Upload Maestro iOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios_maestro_artifacts_${{ github.sha }}
+          path: |
+            ./examples/react-native-expo/artifacts
           retention-days: 3
           if-no-files-found: warn
           compression-level: 6

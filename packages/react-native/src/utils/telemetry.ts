@@ -2,7 +2,6 @@ import React from 'react'
 import { Platform } from 'react-native'
 
 import { getSDKAgent as coreGetSDKAgent } from '@quiltt/core/utils'
-import DeviceInfo from 'react-native-device-info'
 
 /**
  * Gets the React version from the runtime
@@ -53,8 +52,14 @@ export const getOSInfo = (): string => {
  */
 export const getDeviceModel = async (): Promise<string> => {
   try {
-    const model = await DeviceInfo.getModel()
-    return model || 'Unknown'
+    const constants = Platform.constants as Record<string, unknown> | undefined
+    const model = constants?.Model ?? constants?.model
+
+    if (typeof model === 'string' && model.trim().length > 0) {
+      return model.trim()
+    }
+
+    return 'Unknown'
   } catch (error) {
     console.warn('Failed to get device model:', error)
     return 'Unknown'
@@ -76,15 +81,18 @@ export const getPlatformInfo = async (): Promise<string> => {
 
 /**
  * Synchronously generates platform information string for React Native
- * Format: React/<version>; ReactNative/<version>; <OS>/<version>; Unknown
- * Note: Device model is set to 'Unknown' since it requires async DeviceInfo call
+ * Format: React/<version>; ReactNative/<version>; <OS>/<version>; <device-model>
  */
 export const getPlatformInfoSync = (): string => {
   const reactVersion = getReactVersion()
   const rnVersion = getReactNativeVersion()
   const osInfo = getOSInfo()
+  const constants = Platform.constants as Record<string, unknown> | undefined
+  const model = constants?.Model ?? constants?.model
+  const deviceModel =
+    typeof model === 'string' && model.trim().length > 0 ? model.trim() : 'Unknown'
 
-  return `React/${reactVersion}; ReactNative/${rnVersion}; ${osInfo}; Unknown`
+  return `React/${reactVersion}; ReactNative/${rnVersion}; ${osInfo}; ${deviceModel}`
 }
 
 /**

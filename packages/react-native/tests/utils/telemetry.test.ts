@@ -3,15 +3,6 @@ import { Platform } from 'react-native'
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// Mock react-native-device-info
-vi.mock('react-native-device-info', () => ({
-  default: {
-    getModel: vi.fn(),
-  },
-}))
-
-import DeviceInfo from 'react-native-device-info'
-
 import {
   getDeviceModel,
   getOSInfo,
@@ -24,9 +15,7 @@ import {
 
 describe('React Native Telemetry', () => {
   beforeEach(() => {
-    // Reset and set default mock behavior
-    vi.mocked(DeviceInfo.getModel).mockClear()
-    vi.mocked(DeviceInfo.getModel).mockResolvedValue('iPhone14,2')
+    vi.clearAllMocks()
   })
 
   describe('getReactVersion', () => {
@@ -128,20 +117,33 @@ describe('React Native Telemetry', () => {
   })
 
   describe('getDeviceModel', () => {
-    it('should return device model from DeviceInfo', async () => {
+    it('should return device model from Platform.constants.Model', async () => {
+      Object.defineProperty(Platform, 'constants', {
+        value: { Model: 'iPhone14,2' },
+        configurable: true,
+      })
+
       const model = await getDeviceModel()
       expect(model).toBe('iPhone14,2')
     })
 
-    it('should return Unknown if getModel returns null or empty', async () => {
-      vi.mocked(DeviceInfo.getModel).mockResolvedValueOnce('')
+    it('should return Unknown if model is missing or empty', async () => {
+      Object.defineProperty(Platform, 'constants', {
+        value: { Model: '' },
+        configurable: true,
+      })
 
       const model = await getDeviceModel()
       expect(model).toBe('Unknown')
     })
 
     it('should handle errors gracefully', async () => {
-      vi.mocked(DeviceInfo.getModel).mockRejectedValueOnce(new Error('Mock error'))
+      Object.defineProperty(Platform, 'constants', {
+        get() {
+          throw new Error('Mock error')
+        },
+        configurable: true,
+      })
       const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
       const model = await getDeviceModel()
@@ -172,6 +174,7 @@ describe('React Native Telemetry', () => {
             minor: 73,
             patch: 0,
           },
+          Model: 'iPhone14,2',
         },
         configurable: true,
       })
@@ -193,7 +196,7 @@ describe('React Native Telemetry', () => {
 
       const platformInfo = await getPlatformInfo()
       expect(platformInfo).toMatch(
-        /^React\/\d+\.\d+\.\d+; ReactNative\/unknown; iOS\/17\.0; iPhone14,2$/
+        /^React\/\d+\.\d+\.\d+; ReactNative\/unknown; iOS\/17\.0; Unknown$/
       )
     })
   })
@@ -218,16 +221,16 @@ describe('React Native Telemetry', () => {
             minor: 73,
             patch: 0,
           },
+          Model: 'iPhone14,2',
         },
         configurable: true,
       })
     })
 
-    it('should combine platform information synchronously with Unknown device', () => {
+    it('should combine platform information synchronously with device model', () => {
       const platformInfo = getPlatformInfoSync()
-      // Device model is always 'Unknown' in sync version
       expect(platformInfo).toMatch(
-        /^React\/\d+\.\d+\.\d+; ReactNative\/0\.73\.0; iOS\/17\.0; Unknown$/
+        /^React\/\d+\.\d+\.\d+; ReactNative\/0\.73\.0; iOS\/17\.0; iPhone14,2$/
       )
     })
 
@@ -240,10 +243,21 @@ describe('React Native Telemetry', () => {
         value: 33,
         configurable: true,
       })
+      Object.defineProperty(Platform, 'constants', {
+        value: {
+          reactNativeVersion: {
+            major: 0,
+            minor: 73,
+            patch: 0,
+          },
+          Model: 'SM-G998B',
+        },
+        configurable: true,
+      })
 
       const platformInfo = getPlatformInfoSync()
       expect(platformInfo).toMatch(
-        /^React\/\d+\.\d+\.\d+; ReactNative\/0\.73\.0; Android\/33; Unknown$/
+        /^React\/\d+\.\d+\.\d+; ReactNative\/0\.73\.0; Android\/33; SM-G998B$/
       )
     })
 
@@ -280,6 +294,7 @@ describe('React Native Telemetry', () => {
             minor: 73,
             patch: 0,
           },
+          Model: 'iPhone14,2',
         },
         configurable: true,
       })
@@ -302,9 +317,17 @@ describe('React Native Telemetry', () => {
         value: 33,
         configurable: true,
       })
-
-      // Override mock to return Android device model
-      vi.mocked(DeviceInfo.getModel).mockResolvedValueOnce('SM-G998B')
+      Object.defineProperty(Platform, 'constants', {
+        value: {
+          reactNativeVersion: {
+            major: 0,
+            minor: 73,
+            patch: 0,
+          },
+          Model: 'SM-G998B',
+        },
+        configurable: true,
+      })
 
       const sdkAgent = await getSDKAgent('4.5.1')
       expect(sdkAgent).toMatch(
@@ -320,12 +343,17 @@ describe('React Native Telemetry', () => {
     })
 
     it('should handle device model errors gracefully', async () => {
-      vi.mocked(DeviceInfo.getModel).mockRejectedValueOnce(new Error('Mock error'))
+      Object.defineProperty(Platform, 'constants', {
+        get() {
+          throw new Error('Mock error')
+        },
+        configurable: true,
+      })
       vi.spyOn(console, 'warn').mockImplementation(() => {})
 
       const sdkAgent = await getSDKAgent('4.5.1')
       expect(sdkAgent).toMatch(
-        /^Quiltt\/4\.5\.1 \(React\/\d+\.\d+\.\d+; ReactNative\/0\.73\.0; iOS\/17\.0; Unknown\)$/
+        /^Quiltt\/4\.5\.1 \(React\/\d+\.\d+\.\d+; ReactNative\/unknown; iOS\/17\.0; Unknown\)$/
       )
     })
   })

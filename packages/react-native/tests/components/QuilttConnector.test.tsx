@@ -18,13 +18,6 @@ import {
 let capturedWebViewProps: any = null
 let capturedWebViewRef: any = null
 
-// Mock react-native-device-info
-vi.mock('react-native-device-info', () => ({
-  default: {
-    getModel: vi.fn().mockResolvedValue('iPhone14,2'),
-  },
-}))
-
 // Mock ErrorReporter before importing QuilttConnector
 vi.mock('@/utils/error/ErrorReporter', () => ({
   ErrorReporter: class {

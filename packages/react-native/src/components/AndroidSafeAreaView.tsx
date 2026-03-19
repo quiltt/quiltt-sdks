@@ -1,5 +1,7 @@
 import type { PropsWithChildren } from 'react'
-import { Platform, SafeAreaView, StatusBar, StyleSheet } from 'react-native'
+import { Platform, StatusBar, StyleSheet } from 'react-native'
+
+import { SafeAreaView } from 'react-native-safe-area-context'
 
 type AndroidSafeAreaViewProps = PropsWithChildren & {
   testId?: string

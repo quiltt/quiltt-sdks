@@ -15,7 +15,7 @@
  * ```
  */
 
-import { computed, defineComponent, h, type PropType, watch } from 'vue'
+import { computed, defineComponent, getCurrentInstance, h, type PropType, watch } from 'vue'
 
 import type { ConnectorSDKCallbackMetadata, ConnectorSDKEventType } from '@quiltt/core'
 
@@ -91,17 +91,39 @@ export const QuilttButton = defineComponent({
 
     const effectiveAppLauncherUri = computed(() => props.appLauncherUrl ?? props.oauthRedirectUrl)
 
+    // Only register SDK callbacks for events the parent is actually listening to,
+    // mirroring React's behavior. The SDK's per-event handlers are setters (last
+    // registration wins), so unconditionally registering emit wrappers would
+    // overwrite callbacks from sibling components (e.g. TestCustomButton).
+    const vProps = getCurrentInstance()?.vnode.props
+
     const { open } = useQuilttConnector(() => props.connectorId, {
       connectionId: () => props.connectionId,
       institution: () => props.institution,
       appLauncherUrl: effectiveAppLauncherUri,
-      onEvent: (type, metadata) => emit('event', type, metadata),
-      onOpen: (metadata) => emit('open', metadata),
-      onLoad: (metadata) => emit('load', metadata),
-      onExit: (type, metadata) => emit('exit', type, metadata),
-      onExitSuccess: (metadata) => emit('exit-success', metadata),
-      onExitAbort: (metadata) => emit('exit-abort', metadata),
-      onExitError: (metadata) => emit('exit-error', metadata),
+      onEvent: vProps?.onEvent
+        ? (type: ConnectorSDKEventType, metadata: ConnectorSDKCallbackMetadata) =>
+            emit('event', type, metadata)
+        : undefined,
+      onOpen: vProps?.onOpen
+        ? (metadata: ConnectorSDKCallbackMetadata) => emit('open', metadata)
+        : undefined,
+      onLoad: vProps?.onLoad
+        ? (metadata: ConnectorSDKCallbackMetadata) => emit('load', metadata)
+        : undefined,
+      onExit: vProps?.onExit
+        ? (type: ConnectorSDKEventType, metadata: ConnectorSDKCallbackMetadata) =>
+            emit('exit', type, metadata)
+        : undefined,
+      onExitSuccess: vProps?.onExitSuccess
+        ? (metadata: ConnectorSDKCallbackMetadata) => emit('exit-success', metadata)
+        : undefined,
+      onExitAbort: vProps?.onExitAbort
+        ? (metadata: ConnectorSDKCallbackMetadata) => emit('exit-abort', metadata)
+        : undefined,
+      onExitError: vProps?.onExitError
+        ? (metadata: ConnectorSDKCallbackMetadata) => emit('exit-error', metadata)
+        : undefined,
     })
 
     const handleClick = () => {

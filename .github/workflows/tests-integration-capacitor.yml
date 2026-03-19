@@ -69,10 +69,14 @@ jobs:
       - name: Build app
         run: pnpm run build
         working-directory: ${{ matrix.working-directory }}
+        env:
+          VITE_QUILTT_CONNECTOR_ID: ${{ secrets.QUILTT_CONNECTOR_ID }}
 
       - name: Run smoke test
         run: pnpm run test:e2e
         working-directory: ${{ matrix.working-directory }}
+        env:
+          VITE_QUILTT_CONNECTOR_ID: ${{ secrets.QUILTT_CONNECTOR_ID }}
 
       - if: failure()
         name: Upload test artifacts

@@ -98,7 +98,23 @@ describe('QuilttContainer', () => {
     consoleWarnSpy.mockRestore()
   })
 
-  it('opens connector on mounted lifecycle after delay', () => {
+  it('sets quiltt-container attribute with connectorId on the rendered element', () => {
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+
+    const app = createApp({
+      render: () => h(QuilttContainer, { connectorId: 'connector_test' }),
+    })
+
+    app.mount(root)
+
+    const el = root.querySelector('[quiltt-container="connector_test"]')
+    expect(el).toBeTruthy()
+
+    app.unmount()
+  })
+
+  it('does not call open() on mount', () => {
     vi.useFakeTimers()
 
     const root = document.createElement('div')
@@ -109,12 +125,9 @@ describe('QuilttContainer', () => {
     })
 
     app.mount(root)
+    vi.advanceTimersByTime(200)
 
     expect(mocks.openSpy).not.toHaveBeenCalled()
-
-    vi.advanceTimersByTime(100)
-
-    expect(mocks.openSpy).toHaveBeenCalledTimes(1)
 
     app.unmount()
   })

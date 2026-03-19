@@ -13,7 +13,7 @@ export default defineNuxtConfig({
     public: {
       quilttClientId: process.env.NUXT_PUBLIC_QUILTT_CLIENT_ID ?? 'test-client-id',
       quilttAuthToken: process.env.NUXT_PUBLIC_QUILTT_AUTH_TOKEN ?? 'test-auth-token',
-      quilttConnectorId: process.env.NUXT_PUBLIC_CONNECTOR_ID ?? 'connector',
+      quilttConnectorId: process.env.NUXT_PUBLIC_CONNECTOR_ID ?? '1h6bz4vo9z',
       quilttInstitutionSearchTerm: process.env.NUXT_PUBLIC_INSTITUTION_SEARCH_TERM ?? 'test',
     },
   },
