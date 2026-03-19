@@ -13,15 +13,18 @@ struct ConnectorView: View {
 struct WebView: UIViewRepresentable {
     @Binding var showHomeView: Bool
     @Binding var connectionId: String
-    @State var config = QuilttConnectorConnectConfiguration(
-        connectorId: "<CONNECTOR_ID>",
-        appLauncherUrl: "<YOUR_HTTPS_UNIVERSAL_LINK>"
-//        institution: "<OPTIONAL_INSTITUTION_SEARCH_TERM_TO_PREFILL_INSTITUTION>"
-    )
+
+    private let connectorId = ProcessInfo.processInfo.environment["QUILTT_CONNECTOR_ID"] ?? "1h6bz4vo9z"
+    private let appLauncherUrl = ProcessInfo.processInfo.environment["QUILTT_APP_LAUNCHER_URL"] ?? "https://example.com/callback"
+    private let sessionToken = ProcessInfo.processInfo.environment["QUILTT_SESSION_TOKEN"] ?? ""
 
     func makeUIView(context: Context) -> WKWebView {
+        let config = QuilttConnectorConnectConfiguration(
+            connectorId: connectorId,
+            appLauncherUrl: appLauncherUrl
+        )
         let quilttConnector = QuilttConnector.init()
-        quilttConnector.authenticate(token: "<SESSION_TOKEN>")
+        quilttConnector.authenticate(token: sessionToken)
         let webview = quilttConnector.connect(config: config,
                                               onEvent: { eventType, metadata in
                                                 print("onEvent \(eventType), \(metadata)")

@@ -2,7 +2,8 @@
  * QuilttContainer - Container component that renders Quiltt Connector inline
  *
  * Renders a container element where the Quiltt Connector will be displayed.
- * The connector opens automatically when the component mounts.
+ * The SDK detects the `quiltt-container` attribute and renders the connector
+ * inline automatically — no manual `open()` call required.
  *
  * @example
  * ```vue
@@ -13,7 +14,7 @@
  * ```
  */
 
-import { computed, defineComponent, h, onMounted, onUnmounted, type PropType, watch } from 'vue'
+import { computed, defineComponent, getCurrentInstance, h, type PropType, watch } from 'vue'
 
 import type { ConnectorSDKCallbackMetadata, ConnectorSDKEventType } from '@quiltt/core'
 
@@ -86,38 +87,47 @@ export const QuilttContainer = defineComponent({
     )
 
     const effectiveAppLauncherUri = computed(() => props.appLauncherUrl ?? props.oauthRedirectUrl)
-    let openTimeout: ReturnType<typeof setTimeout> | undefined
 
-    const { open } = useQuilttConnector(() => props.connectorId, {
+    // Only register SDK callbacks for events the parent is actually listening to,
+    // mirroring React's behavior. The SDK's per-event handlers are setters (last
+    // registration wins), so unconditionally registering emit wrappers would
+    // overwrite callbacks from sibling components (e.g. TestCustomButton).
+    const vProps = getCurrentInstance()?.vnode.props
+
+    useQuilttConnector(() => props.connectorId, {
       connectionId: () => props.connectionId,
       institution: () => props.institution,
       appLauncherUrl: effectiveAppLauncherUri,
-      onEvent: (type, metadata) => emit('event', type, metadata),
-      onLoad: (metadata) => emit('load', metadata),
-      onExit: (type, metadata) => emit('exit', type, metadata),
-      onExitSuccess: (metadata) => emit('exit-success', metadata),
-      onExitAbort: (metadata) => emit('exit-abort', metadata),
-      onExitError: (metadata) => emit('exit-error', metadata),
-    })
-
-    onMounted(() => {
-      // Short delay to ensure SDK is loaded
-      openTimeout = setTimeout(() => {
-        open()
-      }, 100)
-    })
-
-    onUnmounted(() => {
-      if (openTimeout) {
-        clearTimeout(openTimeout)
-        openTimeout = undefined
-      }
+      onEvent: vProps?.onEvent
+        ? (type: ConnectorSDKEventType, metadata: ConnectorSDKCallbackMetadata) =>
+            emit('event', type, metadata)
+        : undefined,
+      onLoad: vProps?.onLoad
+        ? (metadata: ConnectorSDKCallbackMetadata) => emit('load', metadata)
+        : undefined,
+      onExit: vProps?.onExit
+        ? (type: ConnectorSDKEventType, metadata: ConnectorSDKCallbackMetadata) =>
+            emit('exit', type, metadata)
+        : undefined,
+      onExitSuccess: vProps?.onExitSuccess
+        ? (metadata: ConnectorSDKCallbackMetadata) => emit('exit-success', metadata)
+        : undefined,
+      onExitAbort: vProps?.onExitAbort
+        ? (metadata: ConnectorSDKCallbackMetadata) => emit('exit-abort', metadata)
+        : undefined,
+      onExitError: vProps?.onExitError
+        ? (metadata: ConnectorSDKCallbackMetadata) => emit('exit-error', metadata)
+        : undefined,
     })
 
     return () =>
       h(
         props.as,
         {
+          'quiltt-container': props.connectorId,
+          'quiltt-connection': props.connectionId,
+          'quiltt-app-launcher-uri': effectiveAppLauncherUri.value,
+          'quiltt-institution': props.institution,
           class: 'quiltt-container',
           style: {
             width: '100%',

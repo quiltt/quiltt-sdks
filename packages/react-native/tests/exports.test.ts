@@ -10,12 +10,6 @@ vi.mock('react-native', () => ({
   Text: 'Text',
   ActivityIndicator: 'ActivityIndicator',
 }))
-vi.mock('react-native-device-info', () => ({
-  default: {
-    getSystemVersion: vi.fn(() => '17.0'),
-    getModel: vi.fn(() => 'iPhone 15'),
-  },
-}))
 vi.mock('react-native-webview', () => ({
   default: vi.fn(),
 }))

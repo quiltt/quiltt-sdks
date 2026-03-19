@@ -14,12 +14,15 @@ class QuilttConnectorActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_quiltt_connector)
 
+        val connectorId = intent.getStringExtra("connectorId") ?: "1h6bz4vo9z"
+        val token = intent.getStringExtra("token") ?: ""
+
         val connectorLayout = findViewById<ConstraintLayout>(R.id.connector_layout)
         val quilttConnector = QuilttConnector(this)
-        quilttConnector.authenticate("<SESSION_TOKEN>")
+        quilttConnector.authenticate(token)
         val quilttConnectorConfiguration = QuilttConnectorConnectConfiguration(
-            connectorId = "<CONNECTOR_ID>",
-            appLauncherUrl = "<YOUR_HTTPS_APP_LINK>")
+            connectorId = connectorId,
+            appLauncherUrl = "https://example.com/callback")
 
         webView = quilttConnector.connect(
             config = quilttConnectorConfiguration,

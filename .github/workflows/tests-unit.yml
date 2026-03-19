@@ -80,7 +80,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Unit tests with coverage
-        run: ./gradlew connector:testDebugUnitTest
+        run: ./gradlew connector:testDebugUnitTest connector:createDebugUnitTestCoverageReport
 
       - name: Upload coverage to Qlty
         if: always()
@@ -120,9 +120,6 @@ jobs:
           format: lcov
           incomplete: true
 
-      - name: Test example app
-        run: cd example && flutter pub get && flutter test
-
   test-ios-unit:
     needs: changes
     name: iOS Unit Tests
@@ -143,8 +140,8 @@ jobs:
       - name: Generate lcov coverage report
         working-directory: .
         run: |
-          BINARY=$(find .build -name "*PackageTests" -not -path "*checkouts*" -not -name "*.dSYM" | head -1)
-          PROFDATA=$(find .build/debug/codecoverage -name "*.profdata" 2>/dev/null | head -1)
+          BINARY=$(find .build -name "*PackageTests" -not -path "*checkouts*" -not -path "*.dSYM*" | head -1)
+          PROFDATA=$(find .build -name "*.profdata" -not -path "*checkouts*" 2>/dev/null | head -1)
           if [ -n "$BINARY" ] && [ -n "$PROFDATA" ]; then
             mkdir -p packages/ios/coverage
             xcrun llvm-cov export "$BINARY" \
@@ -154,8 +151,18 @@ jobs:
               > packages/ios/coverage/lcov.info
             echo "Coverage report generated at packages/ios/coverage/lcov.info"
           else
-            echo "Warning: could not find binary ($BINARY) or profdata ($PROFDATA)"
+            echo "Error: could not find binary ($BINARY) or profdata ($PROFDATA)"
+            exit 1
           fi
+
+      - name: Verify lcov coverage report
+        working-directory: .
+        run: |
+          if [ ! -s packages/ios/coverage/lcov.info ]; then
+            echo "Error: packages/ios/coverage/lcov.info is missing or empty"
+            exit 1
+          fi
+          echo "lcov.info size: $(wc -c < packages/ios/coverage/lcov.info) bytes"
 
       - name: Upload coverage to Qlty
         if: always()

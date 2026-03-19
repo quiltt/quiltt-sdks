@@ -23,7 +23,7 @@
  */
 
 import type { MaybeRefOrGetter } from 'vue'
-import { onMounted, onUnmounted, ref, toValue, watch } from 'vue'
+import { markRaw, onMounted, onUnmounted, ref, shallowRef, toValue, watch } from 'vue'
 
 import type {
   ConnectorSDK,
@@ -127,7 +127,7 @@ export const useQuilttConnector = (
     )
   }
 
-  const connector = ref<ConnectorSDKConnector | undefined>()
+  const connector = shallowRef<ConnectorSDKConnector | undefined>()
   const isLoaded = ref(false)
   const isOpening = ref(false)
   const isConnectorOpen = ref(false)
@@ -210,16 +210,20 @@ export const useQuilttConnector = (
     if (hasChanges) {
       if (currentConnectionId) {
         // Reconnect mode
-        connector.value = Quiltt.reconnect(currentConnectorId, {
-          connectionId: currentConnectionId,
-          appLauncherUrl: currentAppLauncherUri,
-        })
+        connector.value = markRaw(
+          Quiltt.reconnect(currentConnectorId, {
+            connectionId: currentConnectionId,
+            appLauncherUrl: currentAppLauncherUri,
+          })
+        )
       } else {
         // Connect mode
-        connector.value = Quiltt.connect(currentConnectorId, {
-          institution: currentInstitution,
-          appLauncherUrl: currentAppLauncherUri,
-        })
+        connector.value = markRaw(
+          Quiltt.connect(currentConnectorId, {
+            institution: currentInstitution,
+            appLauncherUrl: currentAppLauncherUri,
+          })
+        )
       }
 
       connectorCreated = true
@@ -250,21 +254,27 @@ export const useQuilttConnector = (
 
       if (!newConnector) return
 
-      // Register handlers
+      // Register handlers — only register when the callback is provided to avoid
+      // overwriting handlers from sibling components (the SDK uses setter semantics:
+      // last registration wins per event slot).
       if (options?.onEvent) {
         newConnector.onEvent(options.onEvent)
       }
-      newConnector.onOpen((metadata) => {
-        isConnectorOpen.value = true
-        options?.onOpen?.(metadata)
-      })
+      if (options?.onOpen) {
+        newConnector.onOpen((metadata) => {
+          isConnectorOpen.value = true
+          options.onOpen!(metadata)
+        })
+      }
       if (options?.onLoad) {
         newConnector.onLoad(options.onLoad)
       }
-      newConnector.onExit((type, metadata) => {
-        isConnectorOpen.value = false
-        options?.onExit?.(type, metadata)
-      })
+      if (options?.onExit) {
+        newConnector.onExit((type, metadata) => {
+          isConnectorOpen.value = false
+          options.onExit!(type, metadata)
+        })
+      }
       if (options?.onExitSuccess) {
         newConnector.onExitSuccess(options.onExitSuccess)
       }

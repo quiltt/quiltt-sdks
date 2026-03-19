@@ -1,0 +1,56 @@
+appId: com.example
+---
+- launchApp:
+    clearState: false
+    stopApp: true
+
+- runFlow:
+    when:
+      visible: .*isn't responding.*
+    commands:
+      - tapOn:
+          text: Wait
+          optional: true
+
+- runFlow:
+    when:
+      visible: .*isn't responding.*
+    commands:
+      - tapOn:
+          text: Close app
+          optional: true
+      - launchApp:
+          stopApp: true
+
+- extendedWaitUntil:
+    visible:
+      text: .*quiltt-connector-root.*
+    timeout: 180000
+
+# Best-effort OAuth callback simulation through HTTPS launcher redirect.
+- openLink:
+    link: https://example.com/callback?code=maestro-test-code&state=maestro-test-state
+
+- runFlow:
+    when:
+      visible:
+        text: .*Open in.*
+    commands:
+      - tapOn: Open
+
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+
+- launchApp:
+    stopApp: false
+
+- extendedWaitUntil:
+    visible:
+      text: .*quiltt-connector-root.*
+    timeout: 120000
+
+- assertVisible:
+    text: .*quiltt-connector-root.*
