@@ -54,7 +54,7 @@ console.log(
 console.log()
 console.log('  # Android (pass to instrumentation runner)')
 console.log(
-  "  ./gradlew app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.QUILTT_API_KEY_SECRET='$QUILTT_API_KEY_SECRET'"
+  `  ./gradlew app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.QUILTT_SESSION_TOKEN='${token}'`
 )
 console.log()
 console.log('  # iOS (set before xcodebuild or use launchEnvironment in XCUITest)')

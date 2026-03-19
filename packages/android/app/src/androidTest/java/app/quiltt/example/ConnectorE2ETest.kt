@@ -8,6 +8,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import org.junit.Assume.assumeTrue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -26,7 +27,7 @@ import org.junit.runners.MethodSorters
  *  - The "Launch Connector" button is visible and enabled on the home screen
  *  - Tapping the button opens QuilttConnectorActivity
  *  - The WebView container that renders the Quiltt Connector is displayed
- *  - A pre-authenticated connector skips auth and reaches "Log in at Mock Bank"
+ *  - A pre-authenticated connector skips auth and attaches connector content to the host layout
  *
  * For the authenticated test, pass a pre-issued session token as an instrumentation argument:
  *   ./gradlew app:connectedDebugAndroidTest \
@@ -44,9 +45,9 @@ class ConnectorE2ETest {
 
     /**
      * Force the activity window to be interactive before each test so that
-     * Espresso's root-view picker finds a window with focus. Without this,
-     * headless CI emulators leave the screen off / keyguard active and every
-     * onView() call throws RootViewWithoutFocusException.
+        * direct activity interactions and view lookups run against a focused window.
+        * Without this, headless CI emulators can leave the screen off or keyguarded,
+        * making UI state checks and button taps flaky.
      */
     @Before
     fun bringActivityToFocus() {
@@ -120,32 +121,34 @@ class ConnectorE2ETest {
         val launchedConnector =
             instrumentation.waitForMonitorWithTimeout(monitor, 10_000) as? QuilttConnectorActivity
 
-        assertNotNull("Expected QuilttConnectorActivity to be launched after launch tap", launchedConnector)
-        val connectorActivity = launchedConnector!!
+        try {
+            assertNotNull("Expected QuilttConnectorActivity to be launched after launch tap", launchedConnector)
+            val connectorActivity = launchedConnector!!
 
-        val start = System.currentTimeMillis()
-        var connectorReady = false
-        while (System.currentTimeMillis() - start < 15_000L && !connectorReady) {
-            instrumentation.waitForIdleSync()
+            val start = System.currentTimeMillis()
+            var connectorReady = false
+            while (System.currentTimeMillis() - start < 15_000L && !connectorReady) {
+                instrumentation.waitForIdleSync()
 
-            instrumentation.runOnMainSync {
-                val connectorLayout = connectorActivity.findViewById<ViewGroup>(R.id.connector_layout)
-                connectorReady = connectorLayout != null &&
-                    (connectorLayout.isShown || connectorLayout.childCount > 0)
+                instrumentation.runOnMainSync {
+                    val connectorLayout = connectorActivity.findViewById<ViewGroup>(R.id.connector_layout)
+                    connectorReady = connectorLayout != null &&
+                        (connectorLayout.isShown || connectorLayout.childCount > 0)
+                }
+
+                if (!connectorReady) {
+                    Thread.sleep(250)
+                }
             }
 
-            if (!connectorReady) {
-                Thread.sleep(250)
-            }
+            assertTrue(
+                "Expected connector layout to become visible or host connector content",
+                connectorReady,
+            )
+        } finally {
+            launchedConnector?.finish()
+            instrumentation.removeMonitor(monitor)
         }
-
-        assertTrue(
-            "Expected connector layout to become visible or host connector content",
-            connectorReady,
-        )
-
-        connectorActivity.finish()
-        instrumentation.removeMonitor(monitor)
     }
 
     // -------------------------------------------------------------------------
@@ -156,15 +159,19 @@ class ConnectorE2ETest {
      * Verifies that a pre-authenticated connector loads without auth screens.
      *
      * Receives a pre-issued session token via instrumentation argument QUILTT_SESSION_TOKEN,
-    * launches QuilttConnectorActivity with the token, and waits for the connector layout to host
-    * an attached WebView instance.
+     * launches QuilttConnectorActivity with the token, and waits for connector_layout to contain
+     * attached connector content.
      *
      * Skipped automatically when QUILTT_SESSION_TOKEN is not provided or is blank.
      */
     @Test
     fun verifyPreAuthConnectorReachesBankScreen() {
         val token = InstrumentationRegistry.getArguments()
-            .getString("QUILTT_SESSION_TOKEN").takeIf { !it.isNullOrBlank() } ?: return
+            .getString("QUILTT_SESSION_TOKEN")
+        assumeTrue(
+            "Skipping test: QUILTT_SESSION_TOKEN is missing or blank",
+            !token.isNullOrBlank(),
+        )
 
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent = Intent(context, QuilttConnectorActivity::class.java).apply {

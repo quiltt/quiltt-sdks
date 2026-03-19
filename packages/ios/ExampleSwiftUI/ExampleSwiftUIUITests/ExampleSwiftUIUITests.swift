@@ -133,9 +133,11 @@ final class ExampleSwiftUIUITests: XCTestCase {
     /// Issues a Quiltt session token for the sandbox test profile via the auth API.
     /// Uses a semaphore so it can be called synchronously from XCTest.
     private func issueSessionToken(apiKey: String) throws -> String {
+        let requestTimeout: TimeInterval = 30
         let url = URL(string: "https://auth.quiltt.io/v1/users/sessions")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.timeoutInterval = requestTimeout
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(
@@ -148,10 +150,25 @@ final class ExampleSwiftUIUITests: XCTestCase {
         )
         let semaphore = DispatchSemaphore(value: 0)
 
-        URLSession.shared.dataTask(with: request) { data, _, error in
+        URLSession.shared.dataTask(with: request) { data, response, error in
             defer { semaphore.signal() }
             if let error = error {
                 result = .failure(error)
+                return
+            }
+            guard let httpResponse = response as? HTTPURLResponse else {
+                result = .failure(NSError(
+                    domain: "QuilttTest", code: 2,
+                    userInfo: [NSLocalizedDescriptionKey: "Auth API returned a non-HTTP response"]
+                ))
+                return
+            }
+            guard (200...299).contains(httpResponse.statusCode) else {
+                let responseBody = data.flatMap { String(data: $0, encoding: .utf8) } ?? "<empty>"
+                result = .failure(NSError(
+                    domain: "QuilttTest", code: 3,
+                    userInfo: [NSLocalizedDescriptionKey: "Auth API request failed with status \(httpResponse.statusCode): \(responseBody)"]
+                ))
                 return
             }
             guard let data,
@@ -166,7 +183,13 @@ final class ExampleSwiftUIUITests: XCTestCase {
             result = .success(token)
         }.resume()
 
-        semaphore.wait()
+        let waitResult = semaphore.wait(timeout: .now() + requestTimeout + 5)
+        guard waitResult == .success else {
+            throw NSError(
+                domain: "QuilttTest", code: 4,
+                userInfo: [NSLocalizedDescriptionKey: "Timed out waiting for auth API token response after \(Int(requestTimeout + 5)) seconds"]
+            )
+        }
         return try result.get()
     }
 }
