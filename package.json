@@ -52,7 +52,8 @@
       "sharp"
     ],
     "overrides": {
-      "iltorb": "npm:noop2@^2.0.0"
+      "iltorb": "npm:noop2@^2.0.0",
+      "undici@<=7.24.1": "7.24.1"
     }
   },
   "bundlesize": [
