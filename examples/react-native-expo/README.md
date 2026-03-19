@@ -56,13 +56,15 @@ pnpm run web
 
 ## E2E Tests (Detox)
 
-Build and run iOS tests:
+Detox in this example is intentionally smoke-only (app launch + connector mount).
+
+Build and run iOS smoke tests:
 
 ```bash
 pnpm run test:ios
 ```
 
-Build and run Android tests:
+Build and run Android smoke tests:
 
 ```bash
 pnpm run test:android
@@ -72,6 +74,34 @@ Run both platform test suites:
 
 ```bash
 pnpm run test:e2e
+```
+
+## Connector Flow Tests (Maestro)
+
+Maestro flows are plain YAML and do not require compilation/transpilation.
+
+Install the Maestro CLI first:
+
+```bash
+brew install maestro
+```
+
+Run the connector flow:
+
+```bash
+pnpm run test:maestro:connector
+```
+
+Run the OAuth callback handoff simulation:
+
+```bash
+pnpm run test:maestro:oauth
+```
+
+Run all Maestro flows in the folder:
+
+```bash
+pnpm run test:maestro
 ```
 
 ## Notes

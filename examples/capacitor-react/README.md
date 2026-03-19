@@ -44,6 +44,15 @@ pnpm run cap:open:ios
 pnpm run cap:open:android
 ```
 
+## E2E Tests
+
+```bash
+pnpm run playwright:install
+pnpm run test:e2e
+```
+
+This runs the Playwright project configured in `playwright.config.ts` against the Vite dev server.
+
 ## Related Docs
 
 - [Main Repository README](../../README.md)

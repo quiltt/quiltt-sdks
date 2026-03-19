@@ -18,6 +18,11 @@ Each package includes detailed setup instructions and examples. See the individu
 
 **Native Mobile:** [Android](packages/android#readme) · [Flutter](packages/flutter#readme) · [iOS](packages/ios#readme)
 
+## Repository Docs
+
+- [Architecture](docs/architecture.md)
+- [Testing](docs/testing.md)
+
 ## Examples
 
 - [React + Next.js](examples/react-nextjs/README.md)
@@ -131,8 +136,8 @@ swift test
 #### Test Structure
 
 - **Unit Tests (JS/TS)**: Located in `packages/<name>/tests/` with `.test.ts/.tsx` extensions
-- **Web E2E Tests**: Playwright tests in `examples/react-nextjs/e2e/` and `examples/vue-nuxt/e2e/`
-- **Mobile E2E Tests**: Detox tests in `examples/react-native-expo/e2e/`
+- **Web E2E Tests**: Playwright tests in `examples/react-nextjs/e2e/`, `examples/vue-nuxt/e2e/`, `examples/capacitor-react/e2e/`, and `examples/capacitor-vue/e2e/`
+- **Mobile E2E Tests**: Detox smoke tests in `examples/react-native-expo/e2e/`; Maestro connector flows in `examples/react-native-expo/maestro/`
 - **Android Tests**: JUnit tests in `packages/android/connector/src/test/`
 - **Flutter Tests**: Dart tests in `packages/flutter/test/`
 - **iOS Tests**: Swift tests in `packages/ios/Tests/`
@@ -142,7 +147,8 @@ swift test
 
 - **Vitest**: Fast unit test runner with native TypeScript support
 - **Playwright**: Component and end-to-end testing for web examples
-- **Detox**: End-to-end testing for React Native example apps
+- **Detox**: End-to-end smoke testing for React Native example apps
+- **Maestro**: Connector flow and OAuth callback testing for React Native on Android and iOS
 - **Testing Library**: React and React Native testing utilities
 - **Happy DOM**: Lightweight DOM implementation for faster tests
 - **Gradle / JUnit**: Android unit and instrumentation testing
