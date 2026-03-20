@@ -6,7 +6,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "prebuild": "[[ $CI = true ]] && npx pnpm@9 install --store=node_modules/.pnpm-store || echo skipping pnpm install; turbo run prebuild",
+    "prebuild": "[ \"$CI\" = \"true\" ] && pnpm install --store=node_modules/.pnpm-store || echo skipping pnpm install; turbo run prebuild",
     "build": "turbo run build",
     "build:packages": "turbo run build --filter='./packages/*'",
     "bundlesize": "bundlesize",
@@ -15,7 +15,7 @@
     "clean": "turbo run clean",
     "dev": "turbo run dev --parallel",
     "lint": "turbo run lint",
-    "publish": "pnpm run build && npx changeset tag && pnpm -r publish --no-git-checks --filter=./packages/**",
+    "publish": "pnpm run build:packages && npx changeset tag && pnpm -r publish --no-git-checks --filter=./packages/**",
     "test": "turbo run test",
     "test:unit": "vitest run --coverage",
     "test:e2e": "turbo run test:component",
