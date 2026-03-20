@@ -45,7 +45,7 @@ jobs:
             artifact-name: capacitor_vue_test_artifacts_${{ github.sha }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup environment
         uses: ./.github/actions/setup-js

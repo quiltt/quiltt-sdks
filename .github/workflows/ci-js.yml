@@ -24,7 +24,7 @@ jobs:
         node-version: ["24", "22", "20"] # We only support LTS versions of Node.js that are actively maintained
     steps:
       - name: Checkout branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup environment
         uses: ./.github/actions/setup-js
