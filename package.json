@@ -6,7 +6,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "prebuild": "[ \"$CI\" = \"true\" ] && pnpm install --store=node_modules/.pnpm-store || echo skipping pnpm install; turbo run prebuild",
+    "prebuild": "if [ \"$CI\" = \"true\" ]; then pnpm install --store=node_modules/.pnpm-store; fi && turbo run prebuild",
     "build": "turbo run build",
     "build:packages": "turbo run build --filter='./packages/*'",
     "bundlesize": "bundlesize",
