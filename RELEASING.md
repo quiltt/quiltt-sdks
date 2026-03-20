@@ -144,6 +144,8 @@ Runs on push to `main`. When changesets are present:
 2. **Review and merge**: Maintainers review the PR and merge when ready
 3. **Publish**: Upon merge, GitHub Actions builds and publishes all JS/TS packages to npm, creates git tags (`@quiltt/core@x.y.z`, etc.), and creates GitHub releases
 
+Note: `release-js.yml` does not update mobile package version source files. Mobile version file updates are owned by `release-mobile.yml`.
+
 #### Mobile Release (`release-mobile.yml`)
 
 Triggered automatically by the `@quiltt/core@*` tag pushed by the JS release:
@@ -158,10 +160,16 @@ Triggered automatically by the `@quiltt/core@*` tag pushed by the JS release:
      - `packages/ios/Sources/QuilttConnector/QuilttSdkVersion.swift`
    - Commits these changes directly to `main` with `[skip ci]` to avoid re-triggering CI
    - Pushes tags: `v*` (SemVer for SPM), plus platform tags `android/v*`, `flutter/v*`, `ios/v*`
+   - Tag creation is idempotent and validated:
+     - Existing tags on origin are allowed only if they already point at the expected release commit
+     - If an existing remote tag points at a different commit, the workflow fails fast
+     - Missing tags are pushed together with an atomic tag push
 3. **Publish in parallel** (each job checks out `main` after the version commit):
    - Android: builds, tests, publishes to Maven Central, creates `android/v*` GitHub release
    - Flutter: analyzes, validates, publishes to pub.dev, creates `flutter/v*` GitHub release
    - iOS: builds and tests the root `Package.swift`, then creates `ios/v*` GitHub release (iOS is distributed via SPM using the SemVer `v*` tag)
+
+Flutter publish auth: automated publishing uses GitHub Actions OIDC (`id-token: write`) and `dart-lang/setup-dart` in the Flutter publish job.
 
 #### Swift Package Index (Optional)
 
@@ -213,7 +221,20 @@ pnpm run build
 pnpm run publish
 ```
 
-**Note**: Manual releases should be avoided as they bypass the automated changelog and GitHub release creation. Mobile releases cannot be triggered manually — they require the `@quiltt/core@*` tag. If a mobile release fails, re-run the `release-mobile.yml` workflow from the Actions tab using the relevant `@quiltt/core@*` tag as the ref.
+**Note**: Manual releases should be avoided as they bypass the automated changelog and GitHub release creation. Mobile releases are triggered by `push` on `@quiltt/core@*` tags (there is no `workflow_dispatch` entry point).
+
+If a mobile release must be retriggered for an existing version tag:
+
+```bash
+git fetch origin --tags
+TAG='@quiltt/core@<version>'
+SHA="$(git rev-list -n 1 "$TAG")"
+
+# Re-emit the push-tag event
+git push origin ":refs/tags/$TAG"
+git tag -f "$TAG" "$SHA"
+git push origin "refs/tags/$TAG"
+```
 
 ## Troubleshooting
 
@@ -238,7 +259,7 @@ If publishing fails:
 
 If a mobile publish fails after the JS release:
 
-- Re-run the `release-mobile.yml` workflow manually from the Actions tab (select the `@quiltt/core@*` tag as the ref)
+- Re-trigger the workflow by re-pushing the corresponding `@quiltt/core@*` tag (see command snippet above)
 - Check the specific job logs (Android, Flutter, or iOS) for the root cause
 
 ### Version Conflicts
