@@ -1,5 +1,15 @@
 # @quiltt/react-native
 
+## 5.2.2
+
+### Patch Changes
+
+- [#444](https://github.com/quiltt/quiltt-sdks/pull/444) [`ac582f5`](https://github.com/quiltt/quiltt-sdks/commit/ac582f5313c206765b17ebaacd6d50327130a552) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Trigger manual release
+
+- Updated dependencies [[`ac582f5`](https://github.com/quiltt/quiltt-sdks/commit/ac582f5313c206765b17ebaacd6d50327130a552)]:
+  - @quiltt/react@5.2.2
+  - @quiltt/core@5.2.2
+
 ## 5.2.1
 
 ### Patch Changes
