@@ -34,14 +34,13 @@ jobs:
         with:
           build-packages: "false"
 
-      - name: Create .npmrc in home folder
-        run: |
-          echo "//registry.npmjs.org/:_authToken=\${NODE_AUTH_TOKEN}" >> $HOME/.npmrc
-          echo "strict-peer-dependencies=false" >> $HOME/.npmrc
-          echo "git-checks=false" >> $HOME/.npmrc
-
       - name: Authenticate with npm registry
         run: echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > .npmrc
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Verify npm authentication
+        run: npm whoami --registry=https://registry.npmjs.org/
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
