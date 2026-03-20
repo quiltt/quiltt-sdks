@@ -37,7 +37,7 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.QUILTTY_RELEASE_GITHUB_TOKEN }}
 
       - name: Configure Git
         run: |
