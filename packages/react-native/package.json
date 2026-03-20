@@ -1,6 +1,6 @@
 {
   "name": "@quiltt/react-native",
-  "version": "5.2.0",
+  "version": "5.2.1",
   "description": "React Native Components for Quiltt Connector",
   "homepage": "https://github.com/quiltt/quiltt-sdks/tree/main/packages/react-native#readme",
   "repository": {
