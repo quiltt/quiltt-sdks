@@ -1,4 +1,4 @@
-name: Publish Mobile SDKs
+name: Release Mobile SDKs
 
 # Triggered when the JS packages are published by Changesets.
 # All mobile SDKs are released at the same version for a unified release.
@@ -58,13 +58,13 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           sed -i "s/^version: .*/version: $VERSION/" packages/flutter/pubspec.yaml
-          echo "var quilttSdkVersion = \"$VERSION\";" > packages/flutter/lib/quiltt_sdk_version.dart
+          echo "const quilttSdkVersion = \"$VERSION\";" > packages/flutter/lib/quiltt_sdk_version.dart
 
       - name: Update iOS version file
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          printf 'import Foundation\npublic let quilttSdkVersion = "%s"\n' "$VERSION" \
+          printf 'import Foundation\n\npublic let quilttSdkVersion = "%s"\n' "$VERSION" \
             > packages/ios/Sources/QuilttConnector/QuilttSdkVersion.swift
 
       - name: Commit and push version updates
@@ -85,15 +85,36 @@ jobs:
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          # SemVer tag for Swift Package Manager version resolution
-          if ! git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
-            git tag "v$VERSION"
-          fi
+          set -euo pipefail
+          HEAD_SHA=$(git rev-parse HEAD)
+          tags_to_push=()
 
-          git tag "android/v$VERSION"
-          git tag "flutter/v$VERSION"
-          git tag "ios/v$VERSION"
-          git push origin "v$VERSION" "android/v$VERSION" "flutter/v$VERSION" "ios/v$VERSION"
+          for tag in "v$VERSION" "android/v$VERSION" "flutter/v$VERSION" "ios/v$VERSION"; do
+            remote_ref=$(git ls-remote origin "refs/tags/$tag" "refs/tags/$tag^{}")
+            # Prefer the peeled commit SHA (^{}) for annotated tags; fall back to the
+            # direct SHA for lightweight tags.
+            REMOTE_SHA=$(echo "$remote_ref" | awk '$2 ~ /\^\{\}$/ {print $1; exit}')
+            if [ -z "$REMOTE_SHA" ]; then
+              REMOTE_SHA=$(echo "$remote_ref" | awk 'NR==1 {print $1}')
+            fi
+
+            if [ -n "$REMOTE_SHA" ]; then
+              if [ "$REMOTE_SHA" != "$HEAD_SHA" ]; then
+                echo "ERROR: Tag $tag exists on origin at $REMOTE_SHA but HEAD is $HEAD_SHA — aborting"
+                exit 1
+              fi
+              echo "Tag $tag already exists on origin at correct commit, skipping"
+              continue
+            fi
+
+            # Tag missing on origin — force-create local tag at HEAD (overwrites any stale local tag)
+            git tag -f "$tag" HEAD
+            tags_to_push+=("refs/tags/$tag:refs/tags/$tag")
+          done
+
+          if [ ${#tags_to_push[@]} -gt 0 ]; then
+            git push --atomic origin "${tags_to_push[@]}"
+          fi
 
   # ── 3a. Build, test, and publish Android to Maven Central ────────────────────
   publish-android:
@@ -199,6 +220,8 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: main
+
+      - uses: dart-lang/setup-dart@v1
 
       - uses: ./.github/actions/setup-flutter
 

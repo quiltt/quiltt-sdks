@@ -1,4 +1,4 @@
-name: JS Release
+name: Release JS SDKs
 
 on:
   push:
@@ -28,6 +28,8 @@ jobs:
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.QUILTTY_RELEASE_GITHUB_TOKEN }}
 
       - name: Setup environment
         uses: ./.github/actions/setup-js
