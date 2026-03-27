@@ -86,22 +86,90 @@ describe('useImportSession', () => {
     })
   })
 
-  describe('with token already imported', () => {
-    it('returns true without making API calls', async () => {
-      const testToken = 'test.jwt.token'
-      const currentSession = createTestJWT({ token: testToken })
+  describe('with token already imported via explicit import', () => {
+    it('returns true without making API calls on repeat import', async () => {
+      const testJWT = createTestJWT()
+      vi.mocked(JsonWebTokenParse).mockReturnValue(testJWT)
+      mockAuth.ping.mockResolvedValue({ status: 200, data: { token: testJWT.token } })
 
-      const { result } = renderHook(() =>
-        useImportSession(mockAuth as unknown as AuthAPI, currentSession, mockSetSession)
+      // Use a session ref that we update to simulate setSession
+      let currentSession: QuilttJWT | undefined
+      const captureSetSession = vi.fn((token: unknown) => {
+        if (token) currentSession = testJWT
+      }) as unknown as SetSession
+
+      const { result, rerender } = renderHook(
+        ({ session }) =>
+          useImportSession(mockAuth as unknown as AuthAPI, session, captureSetSession),
+        { initialProps: { session: undefined as QuilttJWT | undefined } }
       )
 
-      const imported = await act(async () => {
-        return await result.current(testToken)
+      // First import — goes through ping
+      await act(async () => {
+        await result.current(testJWT.token)
       })
+      expect(mockAuth.ping).toHaveBeenCalledTimes(1)
 
+      // Simulate session being set after successful import
+      rerender({ session: currentSession })
+
+      // Second import with same token — should short-circuit
+      mockAuth.ping.mockClear()
+      const imported = await act(async () => result.current(testJWT.token))
       expect(imported).toBe(true)
       expect(mockAuth.ping).not.toHaveBeenCalled()
-      expect(mockSetSession).not.toHaveBeenCalled()
+    })
+
+    it('re-pings when session was cleared externally after successful import', async () => {
+      const testJWT = createTestJWT()
+      vi.mocked(JsonWebTokenParse).mockReturnValue(testJWT)
+      mockAuth.ping.mockResolvedValue({ status: 200, data: { token: testJWT.token } })
+
+      let currentSession: QuilttJWT | undefined
+      const captureSetSession = vi.fn((token: unknown) => {
+        if (token) currentSession = testJWT
+        else currentSession = undefined
+      }) as unknown as SetSession
+
+      const { result, rerender } = renderHook(
+        ({ session }) =>
+          useImportSession(mockAuth as unknown as AuthAPI, session, captureSetSession),
+        { initialProps: { session: undefined as QuilttJWT | undefined } }
+      )
+
+      // First import
+      await act(async () => result.current(testJWT.token))
+      rerender({ session: currentSession })
+
+      // Session cleared externally (expiration timer)
+      currentSession = undefined
+      rerender({ session: undefined })
+
+      // Re-import should go through ping again
+      mockAuth.ping.mockClear()
+      await act(async () => result.current(testJWT.token))
+      expect(mockAuth.ping).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('with token matching storage-restored session (not explicitly imported)', () => {
+    it('calls ping even though session already has the same token', async () => {
+      const testToken = 'test.jwt.token'
+      // Session was restored from localStorage — same token, but never went through importSession
+      const storedSession = createTestJWT({ token: testToken })
+
+      vi.mocked(JsonWebTokenParse).mockReturnValue(storedSession)
+      mockAuth.ping.mockResolvedValue({ status: 200, data: { token: testToken } })
+
+      const { result } = renderHook(() =>
+        useImportSession(mockAuth as unknown as AuthAPI, storedSession, mockSetSession)
+      )
+
+      const imported = await act(async () => result.current(testToken))
+
+      expect(imported).toBe(true)
+      // Must hit the server — cannot trust a storage-restored token without validation
+      expect(mockAuth.ping).toHaveBeenCalledWith(testToken)
     })
   })
 
@@ -216,7 +284,7 @@ describe('useImportSession', () => {
   })
 
   describe('with inactive token (401)', () => {
-    it('returns false and does not set session', async () => {
+    it('returns false and clears local session state', async () => {
       const testJWT = createTestJWT()
 
       vi.mocked(JsonWebTokenParse).mockReturnValue(testJWT)
@@ -232,7 +300,7 @@ describe('useImportSession', () => {
 
       expect(imported).toBe(false)
       expect(mockAuth.ping).toHaveBeenCalledWith(testJWT.token)
-      expect(mockSetSession).not.toHaveBeenCalled()
+      expect(mockSetSession).toHaveBeenCalledWith(null)
     })
   })
 

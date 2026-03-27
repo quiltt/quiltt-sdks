@@ -74,16 +74,25 @@ export const QuilttAuthProvider: FC<QuilttAuthProviderProps> = ({
     })
   }, [graphqlClient, stableHeaders])
 
-  // Import passed in token (only if value has changed)
+  // Import passed in token when it changes, or when the session was cleared
+  // externally while the same token is still being passed (e.g. expiration timer).
   useEffect(() => {
-    if (token && token !== previousTokenRef.current) {
-      importSessionRef.current(token)
-      previousTokenRef.current = token
-    } else if (!token) {
+    if (!token) {
       // Reset ref when token becomes undefined to allow re-import of same token later
       previousTokenRef.current = undefined
+      return
     }
-  }, [token])
+
+    const tokenChanged = token !== previousTokenRef.current
+    // Session was cleared externally (e.g. expiration timer) while the same token
+    // prop is still set — we need to re-import to re-establish the session.
+    const sessionExpired = !session && previousTokenRef.current === token
+
+    if (tokenChanged || sessionExpired) {
+      importSessionRef.current(token)
+      previousTokenRef.current = token
+    }
+  }, [token, session])
 
   // Reset Client Store when session changes (using deep comparison)
   useEffect(() => {

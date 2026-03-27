@@ -87,4 +87,26 @@ describe('useStorage', () => {
 
     unsubscribeSpy.mockRestore()
   })
+
+  it('falls back to initialState when GlobalStorage.get returns undefined', () => {
+    const key = `test:undefined:${Date.now()}:${Math.random()}`
+    const getSpy = vi.spyOn(GlobalStorage, 'get').mockReturnValueOnce(undefined)
+
+    const { result, unmount } = mountComposable(() => useStorage<string>(key, 'fallback'))
+
+    expect(result.storage.value).toBe('fallback')
+
+    getSpy.mockRestore()
+    unmount()
+  })
+
+  it('skips scope cleanup registration when called outside a Vue scope', () => {
+    const key = `test:noscope:${Date.now()}:${Math.random()}`
+    GlobalStorage.set(key, 'value')
+
+    // Call directly without a Vue component context — getCurrentScope() is null
+    const { storage } = useStorage<string>(key)
+
+    expect(storage.value).toBe('value')
+  })
 })

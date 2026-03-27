@@ -21,6 +21,17 @@ describe('React Telemetry', () => {
       const version = getReactVersion()
       expect(version).toMatch(/^\d+\.\d+\.\d+/)
     })
+
+    it('returns unknown when React.version is falsy', () => {
+      const original = React.version
+      Object.defineProperty(React, 'version', { value: '', writable: true, configurable: true })
+      expect(getReactVersion()).toBe('unknown')
+      Object.defineProperty(React, 'version', {
+        value: original,
+        writable: true,
+        configurable: true,
+      })
+    })
   })
 
   describe('getBrowserInfo', () => {

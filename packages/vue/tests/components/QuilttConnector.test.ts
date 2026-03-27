@@ -285,4 +285,139 @@ describe('QuilttConnector', () => {
 
     expect(removeEventListenerSpy).toHaveBeenCalledWith('message', expect.any(Function))
   })
+
+  it('rejects messages from non-HTTPS and invalid URL origins', () => {
+    const onExitSuccess = vi.fn()
+
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+
+    const app = createApp({
+      render: () => h(QuilttConnector, { connectorId: 'connector_test', onExitSuccess }),
+    })
+
+    app.mount(root)
+
+    // Non-HTTPS (http://) — protocol check fails → return false
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        origin: 'http://connector_test.quiltt.app',
+        data: { source: 'quiltt', type: 'ExitSuccess' },
+      })
+    )
+
+    // Invalid URL — URL constructor throws → catch returns false
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        origin: 'not-a-url',
+        data: { source: 'quiltt', type: 'ExitSuccess' },
+      })
+    )
+
+    expect(onExitSuccess).not.toHaveBeenCalled()
+
+    app.unmount()
+  })
+
+  it('includes profileId and connectorSession in callback metadata when present', () => {
+    const onExitSuccess = vi.fn()
+
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+
+    const app = createApp({
+      render: () => h(QuilttConnector, { connectorId: 'connector_test', onExitSuccess }),
+    })
+
+    app.mount(root)
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        origin: 'https://connector_test.quiltt.app',
+        data: {
+          source: 'quiltt',
+          type: 'ExitSuccess',
+          profileId: 'profile_1',
+          connectorSession: 'sess_abc',
+        },
+      })
+    )
+
+    expect(onExitSuccess).toHaveBeenCalledWith(
+      expect.objectContaining({ profileId: 'profile_1', connectorSession: 'sess_abc' })
+    )
+
+    app.unmount()
+  })
+
+  it('handleOAuthCallback includes URL search params in the message', () => {
+    const postMessageSpy = vi.fn()
+    const connectorRef = ref<{ handleOAuthCallback: (url: string) => void } | null>(null)
+
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+
+    const app = createApp({
+      render: () => h(QuilttConnector, { ref: connectorRef, connectorId: 'connector_test' }),
+    })
+
+    app.mount(root)
+
+    const iframe = root.querySelector('iframe') as HTMLIFrameElement | null
+    Object.defineProperty(iframe as HTMLIFrameElement, 'contentWindow', {
+      value: { postMessage: postMessageSpy },
+      configurable: true,
+    })
+
+    connectorRef.value?.handleOAuthCallback(
+      'https://app.example.com/quiltt/callback?code=abc123&state=xyz'
+    )
+
+    expect(postMessageSpy).toHaveBeenCalledWith(
+      {
+        source: 'quiltt',
+        type: 'OAuthCallback',
+        data: {
+          url: 'https://app.example.com/quiltt/callback?code=abc123&state=xyz',
+          params: { code: 'abc123', state: 'xyz' },
+        },
+      },
+      'https://connector_test.quiltt.app'
+    )
+
+    app.unmount()
+  })
+
+  it('handleOAuthCallback handles invalid URL gracefully via catch block', () => {
+    const postMessageSpy = vi.fn()
+    const connectorRef = ref<{ handleOAuthCallback: (url: string) => void } | null>(null)
+
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+
+    const app = createApp({
+      render: () => h(QuilttConnector, { ref: connectorRef, connectorId: 'connector_test' }),
+    })
+
+    app.mount(root)
+
+    const iframe = root.querySelector('iframe') as HTMLIFrameElement | null
+    Object.defineProperty(iframe as HTMLIFrameElement, 'contentWindow', {
+      value: { postMessage: postMessageSpy },
+      configurable: true,
+    })
+
+    connectorRef.value?.handleOAuthCallback('not-a-valid-url')
+
+    expect(postMessageSpy).toHaveBeenCalledWith(
+      {
+        source: 'quiltt',
+        type: 'OAuthCallback',
+        data: { url: 'not-a-valid-url', params: {} },
+      },
+      'https://connector_test.quiltt.app'
+    )
+
+    app.unmount()
+  })
 })

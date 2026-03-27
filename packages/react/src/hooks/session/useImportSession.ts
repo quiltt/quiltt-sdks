@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useRef } from 'react'
 
 import type { AuthAPI, Maybe, PrivateClaims, QuilttJWT } from '@quiltt/core'
 import { JsonWebTokenParse } from '@quiltt/core'
@@ -18,13 +18,20 @@ type UseImportSession = (
  * Optionally Accepts environmentId to validate session is from with your desired environment
  */
 export const useImportSession: UseImportSession = (auth, session, setSession, environmentId) => {
+  // Tracks tokens that completed the full import path (env check + server ping).
+  // Tokens restored from storage at startup are NOT in this ref and must always
+  // go through full validation before being used.
+  const validatedTokenRef = useRef<string | undefined>(undefined)
+
   const importSession = useCallback<ImportSession>(
     async (token) => {
       // Is there a token?
       if (!token) return !!session
 
-      // Is this token already imported?
-      if (session && session.token === token) return true
+      // Short-circuit only if we explicitly validated this token AND it's still
+      // active in session state. This prevents tokens silently restored from
+      // storage at startup from bypassing server validation.
+      if (validatedTokenRef.current === token && session?.token === token) return true
 
       const jwt = JsonWebTokenParse<PrivateClaims>(token)
 
@@ -39,9 +46,12 @@ export const useImportSession: UseImportSession = (auth, session, setSession, en
       switch (response.status) {
         case 200:
           setSession(token)
+          validatedTokenRef.current = token
           return true
 
         case 401:
+          validatedTokenRef.current = undefined
+          setSession(null)
           return false
 
         default:

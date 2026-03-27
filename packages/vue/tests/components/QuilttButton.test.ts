@@ -186,4 +186,30 @@ describe('QuilttButton', () => {
 
     app.unmount()
   })
+
+  it('exposes connectionId and institution as reactive getters', () => {
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+
+    const app = createApp({
+      render: () =>
+        h(QuilttButton, {
+          connectorId: 'connector_test',
+          connectionId: 'conn_123',
+          institution: 'inst_456',
+        }),
+    })
+
+    app.mount(root)
+
+    const [, options] = mocks.useQuilttConnectorMock.mock.calls[0] as [
+      () => string,
+      Record<string, unknown>,
+    ]
+
+    expect((options.connectionId as () => string | undefined)()).toBe('conn_123')
+    expect((options.institution as () => string | undefined)()).toBe('inst_456')
+
+    app.unmount()
+  })
 })

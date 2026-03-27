@@ -107,11 +107,13 @@ const {
   authenticateSession, // Complete auth (passcode)
   revokeSession,       // Invalidate session server-side
   forgetSession,       // Clear session locally
-} = useQuilttSession()
+} = useQuilttSession('YOUR_ENVIRONMENT_ID') // environmentId is optional
 
 await importSession('YOUR_SESSION_TOKEN')
 console.log(session.value?.token)
 ```
+
+Pass `environmentId` to restrict session import to a specific Quiltt environment (e.g. `env_sandbox_...` vs `env_live_...`). If provided, `importSession` will reject tokens whose JWT claims don't match.
 
 ### useQuilttConnector
 

@@ -9,7 +9,8 @@
  * <script setup>
  * import { useQuilttSession } from '@quiltt/vue'
  *
- * const { session, importSession, revokeSession } = useQuilttSession()
+ * // Pass environmentId to restrict imports to a specific environment (optional)
+ * const { session, importSession, revokeSession } = useQuilttSession('YOUR_ENVIRONMENT_ID')
  *
  * // Import a session token
  * await importSession('<SESSION_TOKEN>')
@@ -42,6 +43,14 @@ import { QuilttClientIdKey, QuilttSessionKey, QuilttSetSessionKey } from '../plu
 // Initialize JWT parser
 const parse = JsonWebTokenParse<PrivateClaims>
 
+// Module-level cache: keyed by the shared sessionRef instance so all composable
+// instances within the same plugin-provided context share one validated marker.
+// WeakMap ensures the entry is GC'd automatically when the app is torn down.
+const validatedTokenCache = new WeakMap<
+  object,
+  { token: string | undefined; environmentId: string | undefined }
+>()
+
 /**
  * Callbacks for identify session operation
  */
@@ -61,7 +70,7 @@ export interface AuthenticateSessionCallbacks {
   onError?: (errors: UnprocessableData) => unknown
 }
 
-export type ImportSession = (token: string, environmentId?: string) => Promise<boolean>
+export type ImportSession = (token: string) => Promise<boolean>
 export type IdentifySession = (
   payload: UsernamePayload,
   callbacks: IdentifySessionCallbacks
@@ -95,7 +104,7 @@ export interface UseQuilttSessionReturn {
  * Session state is automatically synchronized across components.
  * Requires QuilttPlugin provider context and throws when used without it.
  */
-export const useQuilttSession = (): UseQuilttSessionReturn => {
+export const useQuilttSession = (environmentId?: string): UseQuilttSessionReturn => {
   const sessionRef = inject(QuilttSessionKey)
   const setSession = inject(QuilttSetSessionKey)
   const clientIdRef = inject(QuilttClientIdKey)
@@ -113,18 +122,35 @@ export const useQuilttSession = (): UseQuilttSessionReturn => {
   // Create AuthAPI instance (memoized based on clientId)
   const getAuth = () => new AuthAPI(clientIdRef?.value)
 
+  // All composable instances within the same app share one validated marker, keyed
+  // by the injected sessionRef so different apps (e.g. in tests) stay isolated.
+  if (!validatedTokenCache.has(sessionRef)) {
+    validatedTokenCache.set(sessionRef, { token: undefined, environmentId: undefined })
+  }
+  const validatedState = validatedTokenCache.get(sessionRef)!
+
   /**
    * Import an existing session token
    * Validates the token and sets it as the current session
    */
-  const importSession: ImportSession = async (token, environmentId) => {
+  const importSession: ImportSession = async (token) => {
     const auth = getAuth()
 
     // Is there a token?
     if (!token) return !!sessionRef.value
 
-    // Is this token already imported?
-    if (sessionRef.value && sessionRef.value.token === token) return true
+    // Has this exact token already passed env check + server ping AND is still
+    // active in session state? We check sessionRef here so that if the session
+    // was cleared externally (e.g. expiration timer) after validation, we fall
+    // through to a fresh ping rather than returning true with a null session.
+    // environmentId is included in the match so a changed environment restriction
+    // is never bypassed by a previously validated token.
+    if (validatedState.token === token && validatedState.environmentId === environmentId) {
+      if (sessionRef.value?.token === token) return true
+      // validatedState is stale — session was cleared since we last validated
+      validatedState.token = undefined
+      validatedState.environmentId = undefined
+    }
 
     const jwt = parse(token)
 
@@ -139,9 +165,14 @@ export const useQuilttSession = (): UseQuilttSessionReturn => {
     switch (response.status) {
       case 200:
         setSession(token)
+        validatedState.token = token
+        validatedState.environmentId = environmentId
         return true
 
       case 401:
+        validatedState.token = undefined
+        validatedState.environmentId = undefined
+        setSession(null)
         return false
 
       default:
@@ -215,6 +246,8 @@ export const useQuilttSession = (): UseQuilttSessionReturn => {
 
     const auth = getAuth()
     await auth.revoke(sessionRef.value.token)
+    validatedState.token = undefined
+    validatedState.environmentId = undefined
     setSession(null)
   }
 
@@ -223,7 +256,15 @@ export const useQuilttSession = (): UseQuilttSessionReturn => {
    * Optionally pass a specific token to guard against async processes clearing wrong session
    */
   const forgetSession: ForgetSession = (token) => {
+    if (token && token === validatedState.token) {
+      // Always clear the validated marker when the specific token is being forgotten,
+      // even if the session ref is already null (cleared by expiration timer).
+      validatedState.token = undefined
+      validatedState.environmentId = undefined
+    }
     if (!token || (sessionRef.value && token === sessionRef.value.token)) {
+      validatedState.token = undefined
+      validatedState.environmentId = undefined
       setSession(null)
     }
   }
