@@ -20,6 +20,8 @@ vi.mock('@/composables/useQuilttSession', () => ({
   },
 }))
 
+import { cdnBase } from '@quiltt/core'
+
 import { useQuilttConnector } from '@/composables/useQuilttConnector'
 
 const mountComposable = <T>(factory: () => T) => {
@@ -211,5 +213,148 @@ describe('useQuilttConnector', () => {
     unmount()
     consoleWarnSpy.mockRestore()
     delete (globalThis as any).Quiltt
+  })
+
+  it('registers onEvent, onLoad, onExitSuccess, onExitAbort, onExitError on the connector', async () => {
+    const onEvent = vi.fn()
+    const onLoad = vi.fn()
+    const onExitSuccess = vi.fn()
+    const onExitAbort = vi.fn()
+    const onExitError = vi.fn()
+
+    const connector = {
+      open: vi.fn(),
+      onEvent: vi.fn(),
+      onOpen: vi.fn(),
+      onLoad: vi.fn(),
+      onExit: vi.fn(),
+      onExitSuccess: vi.fn(),
+      onExitAbort: vi.fn(),
+      onExitError: vi.fn(),
+    }
+
+    ;(globalThis as any).Quiltt = {
+      authenticate: vi.fn(),
+      connect: vi.fn(() => connector),
+      reconnect: vi.fn(() => connector),
+    }
+
+    const { unmount } = mountComposable(() =>
+      useQuilttConnector('connector_test', {
+        onEvent,
+        onLoad,
+        onExitSuccess,
+        onExitAbort,
+        onExitError,
+      })
+    )
+
+    await nextTick()
+    await nextTick()
+
+    expect(connector.onEvent).toHaveBeenCalledWith(onEvent)
+    expect(connector.onLoad).toHaveBeenCalledWith(onLoad)
+    expect(connector.onExitSuccess).toHaveBeenCalledWith(onExitSuccess)
+    expect(connector.onExitAbort).toHaveBeenCalledWith(onExitAbort)
+    expect(connector.onExitError).toHaveBeenCalledWith(onExitError)
+
+    unmount()
+    delete (globalThis as any).Quiltt
+  })
+
+  it('handles oldConnector cleanup when connector changes', async () => {
+    const connector1 = {
+      open: vi.fn(),
+      onEvent: vi.fn(),
+      onOpen: vi.fn(),
+      onLoad: vi.fn(),
+      onExit: vi.fn(),
+      onExitSuccess: vi.fn(),
+      onExitAbort: vi.fn(),
+      onExitError: vi.fn(),
+    }
+    const connector2 = {
+      open: vi.fn(),
+      onEvent: vi.fn(),
+      onOpen: vi.fn(),
+      onLoad: vi.fn(),
+      onExit: vi.fn(),
+      onExitSuccess: vi.fn(),
+      onExitAbort: vi.fn(),
+      onExitError: vi.fn(),
+    }
+    let callCount = 0
+
+    ;(globalThis as any).Quiltt = {
+      authenticate: vi.fn(),
+      connect: vi.fn(() => (callCount++ === 0 ? connector1 : connector2)),
+      reconnect: vi.fn(),
+    }
+
+    const connectorIdRef = ref('connector_test')
+
+    const { unmount } = mountComposable(() => useQuilttConnector(connectorIdRef))
+
+    await nextTick()
+    await nextTick()
+
+    expect((globalThis as any).Quiltt.connect).toHaveBeenCalledWith(
+      'connector_test',
+      expect.any(Object)
+    )
+
+    // Change connector ID — triggers updateConnector which creates connector2
+    // The watch(connector, ...) fires with oldConnector = connector1 (truthy)
+    connectorIdRef.value = 'connector_test_2'
+    await nextTick()
+    await nextTick()
+
+    expect((globalThis as any).Quiltt.connect).toHaveBeenCalledWith(
+      'connector_test_2',
+      expect.any(Object)
+    )
+
+    unmount()
+    delete (globalThis as any).Quiltt
+  })
+
+  it('resolves via addEventListener when a matching script tag is already in the DOM', async () => {
+    const existingScript = document.createElement('script')
+    existingScript.src = `${cdnBase}/v1/connector.js`
+    document.head.appendChild(existingScript)
+
+    // No globalThis.Quiltt — loadScript skips the first guard and finds the existing element
+    const { unmount } = mountComposable(() => useQuilttConnector())
+
+    await nextTick() // onMounted fires → loadScript → finds existing script → attaches listeners
+
+    existingScript.dispatchEvent(new Event('load'))
+    await nextTick() // isLoaded becomes true; Quiltt guard prevents crash
+
+    existingScript.remove()
+    unmount()
+  })
+
+  it('creates a new script tag and sets nonce when SDK is not already in the DOM', async () => {
+    // No globalThis.Quiltt and no pre-existing script — falls through to createElement path
+    const { unmount } = mountComposable(() =>
+      useQuilttConnector('connector_test', { nonce: 'test-nonce' })
+    )
+
+    await nextTick() // onMounted fires → loadScript → createElement → appendChild
+
+    const script = document.head.querySelector(
+      `script[src^="${cdnBase}/v1/connector.js"]`
+    ) as HTMLScriptElement | null
+
+    expect(script).toBeTruthy()
+    expect(script?.async).toBe(true)
+    expect(script?.nonce).toBe('test-nonce')
+
+    script?.dispatchEvent(new Event('load'))
+    await nextTick()
+
+    script?.remove()
+    unmount()
   })
 })

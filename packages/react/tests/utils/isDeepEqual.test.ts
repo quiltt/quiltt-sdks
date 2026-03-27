@@ -78,6 +78,7 @@ describe('isDeepEqual', () => {
     expect(isDeepEqual(map1, map2)).toBe(true)
     expect(isDeepEqual(map1, map3)).toBe(false)
     expect(isDeepEqual(new Map([['key', { a: 1 }]]), new Map([['key', { a: 1 }]]))).toBe(true)
+    expect(isDeepEqual(new Map([['a', 1]]), new Map())).toBe(false) // size mismatch
   })
 
   // Sets
@@ -89,6 +90,7 @@ describe('isDeepEqual', () => {
     expect(isDeepEqual(set1, set2)).toBe(true)
     expect(isDeepEqual(set1, set3)).toBe(false)
     expect(isDeepEqual(new Set([{ a: 1 }]), new Set([{ a: 1 }]))).toBe(true)
+    expect(isDeepEqual(new Set([1, 2, 3]), new Set([1]))).toBe(false) // size mismatch
   })
 
   // Mixed types

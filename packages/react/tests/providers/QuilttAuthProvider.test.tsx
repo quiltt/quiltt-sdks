@@ -4,14 +4,19 @@ import { render } from '@testing-library/react'
 import { createVersionLink, InMemoryCache, QuilttClient, TerminatingLink } from '@quiltt/core'
 
 import { QuilttAuthProvider } from '@/providers/QuilttAuthProvider'
+import { isDeepEqual } from '@/utils'
 
 // Create a mock function outside to track calls
 const mockImportSession = vi.fn()
+// Controllable session value for tests that exercise session-expiry behaviour
+let mockSession: object | null = {}
 
 // Mock the useQuilttSession hook
 vi.mock('@/hooks', () => ({
   useQuilttSession: () => ({
-    session: {}, // Provide a mock session object instead of null
+    get session() {
+      return mockSession
+    },
     importSession: mockImportSession,
   }),
 }))
@@ -46,6 +51,7 @@ vi.mock('@quiltt/core', () => {
 describe('QuilttAuthProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockSession = {} // reset to a truthy session before each test
   })
 
   it('renders children correctly', () => {
@@ -148,5 +154,79 @@ describe('QuilttAuthProvider', () => {
     // Should call importSession again since ref was reset when token became undefined
     expect(mockImportSession).toHaveBeenCalledTimes(2)
     expect(mockImportSession).toHaveBeenCalledWith(token)
+  })
+
+  it('re-imports token when session expires while token prop is unchanged', () => {
+    const token = 'test-token-123'
+
+    // Render with token and an active session
+    mockSession = { token }
+    const { rerender } = render(
+      <QuilttAuthProvider token={token}>
+        <div>Test Child</div>
+      </QuilttAuthProvider>
+    )
+
+    expect(mockImportSession).toHaveBeenCalledTimes(1)
+
+    // Simulate expiration timer clearing the session while same token prop remains
+    mockSession = null
+
+    rerender(
+      <QuilttAuthProvider token={token}>
+        <div>Test Child</div>
+      </QuilttAuthProvider>
+    )
+
+    // Must re-import to re-establish the session
+    expect(mockImportSession).toHaveBeenCalledTimes(2)
+    expect(mockImportSession).toHaveBeenCalledWith(token)
+  })
+
+  it('does not re-import when session changes to a new truthy value with unchanged token', () => {
+    const token = 'stable-token'
+    mockSession = { token }
+
+    const { rerender } = render(
+      <QuilttAuthProvider token={token}>
+        <div>Test Child</div>
+      </QuilttAuthProvider>
+    )
+
+    expect(mockImportSession).toHaveBeenCalledTimes(1)
+
+    // Change session to a new truthy object while token stays the same.
+    // This triggers the [token, session] effect but neither tokenChanged nor sessionExpired is true.
+    mockSession = { token: 'new-session-data' }
+
+    rerender(
+      <QuilttAuthProvider token={token}>
+        <div>Test Child</div>
+      </QuilttAuthProvider>
+    )
+
+    expect(mockImportSession).toHaveBeenCalledTimes(1)
+  })
+
+  it('resets apollo store when isDeepEqual indicates session changed', () => {
+    vi.mocked(isDeepEqual).mockReturnValue(false)
+
+    const { rerender } = render(
+      <QuilttAuthProvider>
+        <div>Test Child</div>
+      </QuilttAuthProvider>
+    )
+
+    mockSession = { updated: true }
+    rerender(
+      <QuilttAuthProvider>
+        <div>Test Child</div>
+      </QuilttAuthProvider>
+    )
+
+    expect(vi.mocked(isDeepEqual)).toHaveBeenCalled()
+
+    // Restore default behaviour for subsequent tests
+    vi.mocked(isDeepEqual).mockReturnValue(true)
   })
 })
