@@ -284,7 +284,7 @@ describe('useImportSession', () => {
   })
 
   describe('with inactive token (401)', () => {
-    it('returns false and does not set session', async () => {
+    it('returns false and clears local session state', async () => {
       const testJWT = createTestJWT()
 
       vi.mocked(JsonWebTokenParse).mockReturnValue(testJWT)
@@ -300,7 +300,7 @@ describe('useImportSession', () => {
 
       expect(imported).toBe(false)
       expect(mockAuth.ping).toHaveBeenCalledWith(testJWT.token)
-      expect(mockSetSession).not.toHaveBeenCalled()
+      expect(mockSetSession).toHaveBeenCalledWith(null)
     })
   })
 

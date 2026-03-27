@@ -170,6 +170,7 @@ describe('useQuilttSession', () => {
 
     mocks.pingMock.mockResolvedValueOnce({ status: 401 } as any)
     expect(await result.importSession(token)).toBe(false)
+    expect(setSession).toHaveBeenCalledWith(null)
 
     mocks.pingMock.mockResolvedValueOnce({ status: 500 } as any)
     await expect(result.importSession(token)).rejects.toThrow(/Unexpected response status 500/)

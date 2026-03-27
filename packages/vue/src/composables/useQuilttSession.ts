@@ -172,6 +172,7 @@ export const useQuilttSession = (environmentId?: string): UseQuilttSessionReturn
       case 401:
         validatedState.token = undefined
         validatedState.environmentId = undefined
+        setSession(null)
         return false
 
       default:

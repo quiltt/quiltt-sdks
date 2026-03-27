@@ -51,6 +51,7 @@ export const useImportSession: UseImportSession = (auth, session, setSession, en
 
         case 401:
           validatedTokenRef.current = undefined
+          setSession(null)
           return false
 
         default:
