@@ -1,5 +1,11 @@
 # Changelog
 
+## 5.2.3
+
+### Patch Changes
+
+- [#448](https://github.com/quiltt/quiltt-sdks/pull/448) [`f5968c6`](https://github.com/quiltt/quiltt-sdks/commit/f5968c65bd5de1bf421d96bc371473f1e9ba4763) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Empty-token early return and no-session revoke guard in useQuilttSession
+
 ## 5.2.2
 
 ### Patch Changes

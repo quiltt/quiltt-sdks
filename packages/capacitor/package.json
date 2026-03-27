@@ -1,6 +1,6 @@
 {
   "name": "@quiltt/capacitor",
-  "version": "5.2.2",
+  "version": "5.2.3",
   "description": "Capacitor plugin for Quiltt Connector",
   "keywords": [
     "quiltt",
