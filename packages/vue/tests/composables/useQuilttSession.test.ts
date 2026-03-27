@@ -444,6 +444,50 @@ describe('useQuilttSession', () => {
     unmount()
   })
 
+  it('re-pings when environmentId changes even if token and session are unchanged', async () => {
+    mocks.pingMock.mockResolvedValue({ status: 200 } as any)
+
+    const token = createToken(3600, 'env_1')
+    const sessionRef = ref(null as any)
+    const setSession = vi.fn((t: string | null) => {
+      sessionRef.value = t ? { token: t } : null
+    })
+
+    // First composable instance: validated for env_1
+    const { result: result1, unmount: unmount1 } = mountComposable(
+      () => useQuilttSession('env_1'),
+      [
+        [QuilttSessionKey as unknown as symbol, sessionRef],
+        [QuilttSetSessionKey as unknown as symbol, setSession],
+        [QuilttClientIdKey as unknown as symbol, ref('cid_test')],
+      ]
+    )
+
+    await result1.importSession(token)
+    expect(mocks.pingMock).toHaveBeenCalledTimes(1)
+
+    // Second composable instance with a different environmentId shares the same
+    // sessionRef but must NOT short-circuit — the token hasn't been validated
+    // against env_2 yet.
+    mocks.pingMock.mockClear()
+    const { result: result2, unmount: unmount2 } = mountComposable(
+      () => useQuilttSession('env_2'),
+      [
+        [QuilttSessionKey as unknown as symbol, sessionRef],
+        [QuilttSetSessionKey as unknown as symbol, setSession],
+        [QuilttClientIdKey as unknown as symbol, ref('cid_test')],
+      ]
+    )
+
+    // Token was minted for env_1, so env_2 check fails — returns false without ping
+    const imported = await result2.importSession(token)
+    expect(imported).toBe(false)
+    expect(mocks.pingMock).not.toHaveBeenCalled()
+
+    unmount1()
+    unmount2()
+  })
+
   it('exposes reactive session via computed ref', async () => {
     mocks.pingMock.mockResolvedValue({ status: 200 } as any)
 

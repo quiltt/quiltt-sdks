@@ -43,6 +43,14 @@ import { QuilttClientIdKey, QuilttSessionKey, QuilttSetSessionKey } from '../plu
 // Initialize JWT parser
 const parse = JsonWebTokenParse<PrivateClaims>
 
+// Module-level cache: keyed by the shared sessionRef instance so all composable
+// instances within the same plugin-provided context share one validated marker.
+// WeakMap ensures the entry is GC'd automatically when the app is torn down.
+const validatedTokenCache = new WeakMap<
+  object,
+  { token: string | undefined; environmentId: string | undefined }
+>()
+
 /**
  * Callbacks for identify session operation
  */
@@ -114,10 +122,12 @@ export const useQuilttSession = (environmentId?: string): UseQuilttSessionReturn
   // Create AuthAPI instance (memoized based on clientId)
   const getAuth = () => new AuthAPI(clientIdRef?.value)
 
-  // Tracks tokens that completed the full import path (env check + server ping).
-  // Tokens restored from localStorage at startup are NOT in this set and must
-  // always go through full validation before being used.
-  let validatedToken: string | undefined
+  // All composable instances within the same app share one validated marker, keyed
+  // by the injected sessionRef so different apps (e.g. in tests) stay isolated.
+  if (!validatedTokenCache.has(sessionRef)) {
+    validatedTokenCache.set(sessionRef, { token: undefined, environmentId: undefined })
+  }
+  const validatedState = validatedTokenCache.get(sessionRef)!
 
   /**
    * Import an existing session token
@@ -133,10 +143,13 @@ export const useQuilttSession = (environmentId?: string): UseQuilttSessionReturn
     // active in session state? We check sessionRef here so that if the session
     // was cleared externally (e.g. expiration timer) after validation, we fall
     // through to a fresh ping rather than returning true with a null session.
-    if (validatedToken === token) {
+    // environmentId is included in the match so a changed environment restriction
+    // is never bypassed by a previously validated token.
+    if (validatedState.token === token && validatedState.environmentId === environmentId) {
       if (sessionRef.value?.token === token) return true
-      // validatedToken is stale — session was cleared since we last validated
-      validatedToken = undefined
+      // validatedState is stale — session was cleared since we last validated
+      validatedState.token = undefined
+      validatedState.environmentId = undefined
     }
 
     const jwt = parse(token)
@@ -152,11 +165,13 @@ export const useQuilttSession = (environmentId?: string): UseQuilttSessionReturn
     switch (response.status) {
       case 200:
         setSession(token)
-        validatedToken = token
+        validatedState.token = token
+        validatedState.environmentId = environmentId
         return true
 
       case 401:
-        validatedToken = undefined
+        validatedState.token = undefined
+        validatedState.environmentId = undefined
         return false
 
       default:
@@ -230,7 +245,8 @@ export const useQuilttSession = (environmentId?: string): UseQuilttSessionReturn
 
     const auth = getAuth()
     await auth.revoke(sessionRef.value.token)
-    validatedToken = undefined
+    validatedState.token = undefined
+    validatedState.environmentId = undefined
     setSession(null)
   }
 
@@ -239,13 +255,15 @@ export const useQuilttSession = (environmentId?: string): UseQuilttSessionReturn
    * Optionally pass a specific token to guard against async processes clearing wrong session
    */
   const forgetSession: ForgetSession = (token) => {
-    if (token && token === validatedToken) {
+    if (token && token === validatedState.token) {
       // Always clear the validated marker when the specific token is being forgotten,
       // even if the session ref is already null (cleared by expiration timer).
-      validatedToken = undefined
+      validatedState.token = undefined
+      validatedState.environmentId = undefined
     }
     if (!token || (sessionRef.value && token === sessionRef.value.token)) {
-      validatedToken = undefined
+      validatedState.token = undefined
+      validatedState.environmentId = undefined
       setSession(null)
     }
   }
