@@ -2,7 +2,6 @@ import { computed, ref } from 'vue'
 
 import type { ErrorData, ResolvableData } from '@quiltt/core'
 import { ConnectorsAPI } from '@quiltt/core'
-import { extractVersionNumber } from '@quiltt/core/utils'
 
 import { getSDKAgent } from '../utils'
 import { version } from '../version'
@@ -25,8 +24,7 @@ export const useQuilttResolvable = (
   onErrorCallback?: (msg: string) => void
 ) => {
   const { session } = useQuilttSession()
-  const sdkVersion = extractVersionNumber(version)
-  const connectorsAPI = new ConnectorsAPI(connectorId, getSDKAgent(sdkVersion))
+  const connectorsAPI = new ConnectorsAPI(connectorId, getSDKAgent(version))
 
   const isLoading = ref(false)
   const isResolvable = ref<boolean | null>(null)

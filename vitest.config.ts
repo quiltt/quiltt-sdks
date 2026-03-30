@@ -1,7 +1,6 @@
 import { defineConfig, mergeConfig } from 'vitest/config'
 
 import react from '@vitejs/plugin-react'
-import tsconfigPaths from 'vite-tsconfig-paths'
 import reactNative from 'vitest-react-native'
 
 export default defineConfig({
@@ -9,7 +8,7 @@ export default defineConfig({
     projects: [
       // core
       mergeConfig(
-        { plugins: [tsconfigPaths()] },
+        { resolve: { tsconfigPaths: true } },
         {
           test: {
             extends: true,
@@ -21,7 +20,7 @@ export default defineConfig({
       ),
       // react
       mergeConfig(
-        { plugins: [tsconfigPaths(), react()] },
+        { plugins: [react()], resolve: { tsconfigPaths: true } },
         {
           test: {
             extends: true,
@@ -34,7 +33,7 @@ export default defineConfig({
       ),
       // react-native
       mergeConfig(
-        { plugins: [tsconfigPaths(), reactNative()] },
+        { plugins: [reactNative()], resolve: { tsconfigPaths: true } },
         {
           test: {
             extends: true,
@@ -50,7 +49,7 @@ export default defineConfig({
       ),
       // capacitor
       mergeConfig(
-        { plugins: [tsconfigPaths(), react()] },
+        { plugins: [react()], resolve: { tsconfigPaths: true } },
         {
           test: {
             extends: true,
@@ -62,7 +61,7 @@ export default defineConfig({
       ),
       // vue
       mergeConfig(
-        { plugins: [tsconfigPaths()] },
+        { resolve: { tsconfigPaths: true } },
         {
           test: {
             extends: true,

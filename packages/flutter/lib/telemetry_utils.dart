@@ -2,10 +2,12 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 
+/// Returns the SDK User-Agent string in the format `Quiltt/<version> (<platform>)`.
 String getSDKAgent(String sdkVersion, String platformInfo) {
   return 'Quiltt/$sdkVersion ($platformInfo)';
 }
 
+/// Returns a human-readable string describing the current runtime platform and OS version.
 String getRuntimePlatformInfo() {
   if (kIsWeb) {
     return 'Flutter Web';
