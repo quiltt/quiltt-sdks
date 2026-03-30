@@ -204,59 +204,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # ── 3b. Build, test, and publish Flutter to pub.dev ──────────────────────────
-  publish-flutter:
-    name: Publish Flutter
-    needs: [prepare, update-versions]
-    runs-on: ubuntu-latest
-    environment: pub-dev # pub-dev is a valid environment name on quiltt-sdks. If the GitHub Actions Workflow extension is flagging this as an error, it can be ignored.
-    permissions:
-      id-token: write
-    defaults:
-      run:
-        working-directory: packages/flutter
-
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: main
-
-      - uses: dart-lang/setup-dart@v1
-
-      - uses: ./.github/actions/setup-flutter
-
-      - name: Install dependencies
-        run: |
-          flutter pub get
-
-      - name: Analyze
-        run: flutter analyze lib
-
-      - name: Validate package
-        run: flutter pub publish --dry-run
-
-      - name: Publish to pub.dev
-        run: flutter pub publish --force
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: "flutter/v${{ needs.prepare.outputs.version }}"
-          name: "Flutter SDK v${{ needs.prepare.outputs.version }}"
-          body: |
-            ## Flutter SDK v${{ needs.prepare.outputs.version }}
-
-            ### Installation
-
-            ```yaml
-            dependencies:
-              quiltt_connector: ^${{ needs.prepare.outputs.version }}
-            ```
-
-            Published to [pub.dev](https://pub.dev/packages/quiltt_connector).
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  # ── 3b. Flutter is published by release-flutter.yml (triggered by flutter/v* tag) ──
 
   # ── 3c. Build, test, and release iOS ─────────────────────────────────────────
   release-ios:

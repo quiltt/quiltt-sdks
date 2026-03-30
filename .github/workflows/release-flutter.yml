@@ -1,0 +1,74 @@
+name: Release Flutter SDK
+
+# Triggered by the flutter/v* tag created by release-mobile.yml.
+# Running under this tag ensures the OIDC token carries refs/tags/flutter/v*,
+# which matches the trusted-publishing tag pattern configured on pub.dev.
+on:
+  push:
+    tags:
+      - "flutter/v*"
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+permissions:
+  contents: write
+
+jobs:
+  publish-flutter:
+    name: Publish Flutter
+    runs-on: ubuntu-latest
+    environment: pub-dev # pub-dev is a valid environment name on quiltt-sdks. If the GitHub Actions Workflow extension is flagging this as an error, it can be ignored.
+    permissions:
+      id-token: write
+      contents: write
+    defaults:
+      run:
+        working-directory: packages/flutter
+
+    steps:
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/flutter/v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Releasing Flutter SDK v$VERSION"
+
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - uses: dart-lang/setup-dart@v1
+
+      - uses: ./.github/actions/setup-flutter
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze lib
+
+      - name: Validate package
+        run: flutter pub publish --dry-run
+
+      - name: Publish to pub.dev
+        run: flutter pub publish --force
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "flutter/v${{ steps.version.outputs.version }}"
+          name: "Flutter SDK v${{ steps.version.outputs.version }}"
+          body: |
+            ## Flutter SDK v${{ steps.version.outputs.version }}
+
+            ### Installation
+
+            ```yaml
+            dependencies:
+              quiltt_connector: ^${{ steps.version.outputs.version }}
+            ```
+
+            Published to [pub.dev](https://pub.dev/packages/quiltt_connector).
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
