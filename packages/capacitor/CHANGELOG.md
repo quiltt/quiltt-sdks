@@ -1,5 +1,15 @@
 # @quiltt/capacitor
 
+## 5.2.4
+
+### Patch Changes
+
+- [#451](https://github.com/quiltt/quiltt-sdks/pull/451) [`e8179ce`](https://github.com/quiltt/quiltt-sdks/commit/e8179ce5dd340b0804da1836c97aec62604d91f2) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Fix SDK Release
+
+- Updated dependencies [[`e8179ce`](https://github.com/quiltt/quiltt-sdks/commit/e8179ce5dd340b0804da1836c97aec62604d91f2)]:
+  - @quiltt/vue@5.2.4
+  - @quiltt/react@5.2.4
+
 ## 5.2.3
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@quiltt/android",
-  "version": "5.2.3",
+  "version": "5.2.4",
   "private": true,
   "scripts": {
     "lint": "./gradlew lint"
