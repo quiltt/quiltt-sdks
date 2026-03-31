@@ -1,3 +1,3 @@
 import Foundation
 
-public let quilttSdkVersion = "5.2.3"
+public let quilttSdkVersion = "5.2.4"
