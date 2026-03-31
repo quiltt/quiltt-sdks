@@ -1,1 +1,10 @@
-example/
+example/android/
+example/ios/
+example/build/
+example/.dart_tool/
+example/.flutter-plugins-dependencies
+example/.metadata
+example/.ruby-lsp/
+example/pubspec.lock
+fastlane/
+package.json

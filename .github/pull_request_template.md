@@ -1,28 +1,23 @@
 ## Summary
+<!--- What does this PR do and why? -->
 
 <!--- CHANGELOG_START -->
-## Features <!--- Delete section if not needed -->
+## Features <!--- Delete if not needed -->
 <!---
-### {Feature Name}
-Feature Description...
-[Loom Video]
-
-- Related Changes...
+### Feature Name
+Description and context. [Loom Video]
 -->
 
-## Improvements <!--- Delete section if not needed -->
-<!--- Example:
-- [External] Changed something that should go into the changelog...
-- [External] **Breaking** Changed something that should go into the changelog...
-- Changed something internal...
+## Improvements <!--- Delete if not needed -->
+<!---
+- [External] User-facing change for changelog
+- Internal change (no External tag)
 -->
 
-## Bug Fixes <!--- Delete section if not needed -->
-<!--- Example:
-- [External] Fixed something that should go into the changelog...
-- Fixed something internal...
+## Bug Fixes <!--- Delete if not needed -->
+<!---
+- [External] User-facing fix for changelog
 -->
-
 <!--- CHANGELOG_END -->
 
 ## Release Checklist

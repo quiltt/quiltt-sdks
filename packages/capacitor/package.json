@@ -50,6 +50,7 @@
     "dist/**",
     "src/**",
     "ios/Sources",
+    "QuilttConnector",
     "QuilttConnector.podspec",
     "LICENSE.md",
     "CHANGELOG.md"
