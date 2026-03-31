@@ -2,6 +2,8 @@
 
 [![npm version](https://badge.fury.io/js/@quiltt%2Fvue.svg)](https://badge.fury.io/js/@quiltt%2Fvue)
 [![CI](https://github.com/quiltt/quiltt-sdks/actions/workflows/ci-js.yml/badge.svg?branch=main)](https://github.com/quiltt/quiltt-sdks/actions/workflows/ci-js.yml)
+[![npm unpacked size](https://img.shields.io/npm/unpacked-size/@quiltt/vue)](https://www.npmjs.com/package/@quiltt/vue)
+[![npm bundle size](https://img.shields.io/bundlephobia/minzip/@quiltt/vue)](https://bundlephobia.com/package/@quiltt/vue)
 
 Vue 3 composables and components for Quiltt Connector.
 

@@ -2,6 +2,8 @@
 
 [![npm version](https://badge.fury.io/js/@quiltt%2Freact.svg)](https://badge.fury.io/js/@quiltt%2Freact)
 [![CI](https://github.com/quiltt/quiltt-sdks/actions/workflows/ci-js.yml/badge.svg?branch=main)](https://github.com/quiltt/quiltt-sdks/actions/workflows/ci-js.yml)
+[![npm unpacked size](https://img.shields.io/npm/unpacked-size/@quiltt/react)](https://www.npmjs.com/package/@quiltt/react)
+[![npm bundle size](https://img.shields.io/bundlephobia/minzip/@quiltt/react)](https://bundlephobia.com/package/@quiltt/react)
 
 `@quiltt/react` provides React Components and Hooks for integrating Quiltt into React-based applications.
 
