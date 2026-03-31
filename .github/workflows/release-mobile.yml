@@ -77,7 +77,7 @@ jobs:
             packages/flutter/pubspec.yaml \
             packages/flutter/lib/quiltt_sdk_version.dart \
             packages/ios/Sources/QuilttConnector/QuilttSdkVersion.swift
-          git diff --cached --quiet || git commit -m "chore: release v$VERSION [skip ci]"
+          git diff --cached --quiet || git commit -m "chore: release v$VERSION"
           git pull --rebase origin main
           git push origin main
 
@@ -163,6 +163,14 @@ jobs:
           MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
         run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://repo1.maven.org/maven2/io/quiltt/connector/$VERSION/connector-$VERSION.pom")
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "Version $VERSION already published to Maven Central, skipping"
+            exit 0
+          fi
+
           ./gradlew publishConnectorPublicationToLocalStagingRepository
           cd build/local-staging
           zip -r ../../connector-bundle.zip .

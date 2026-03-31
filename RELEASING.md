@@ -32,7 +32,7 @@ The following packages are published to their respective registries automaticall
 | Package | Registry | Workflow |
 | --- | --- | --- |
 | Android (`io.quiltt:connector`) | Maven Central | `release-mobile.yml` |
-| Flutter (`quiltt_connector`) | pub.dev | `release-mobile.yml` |
+| Flutter (`quiltt_connector`) | pub.dev | `release-flutter.yml` |
 | iOS (`QuilttConnector`) | GitHub Releases + SPM (`vX.Y.Z`) tag | `release-mobile.yml` |
 
 Mobile packages have `private: true` in their `package.json` so Changesets tracks their versions but does not publish them to npm. Publishing is handled by `.github/workflows/release-mobile.yml`, which triggers on the `@quiltt/core@*` git tags created by Changesets.
@@ -158,18 +158,18 @@ Triggered automatically by the `@quiltt/core@*` tag pushed by the JS release:
      - `packages/flutter/pubspec.yaml`
      - `packages/flutter/lib/quiltt_sdk_version.dart`
      - `packages/ios/Sources/QuilttConnector/QuilttSdkVersion.swift`
-   - Commits these changes directly to `main` with `[skip ci]` to avoid re-triggering CI
-   - Pushes tags: `v*` (SemVer for SPM), plus platform tags `android/v*`, `flutter/v*`, `ios/v*`
+   - Commits these changes directly to `main`
+   - Pushes tags: `v*` (SemVer for SPM), plus platform tags `android/v*`, `flutter/v*`, `ios/v*` — the `flutter/v*` tag triggers `release-flutter.yml`
    - Tag creation is idempotent and validated:
      - Existing tags on origin are allowed only if they already point at the expected release commit
      - If an existing remote tag points at a different commit, the workflow fails fast
      - Missing tags are pushed together with an atomic tag push
 3. **Publish in parallel** (each job checks out `main` after the version commit):
    - Android: builds, tests, publishes to Maven Central, creates `android/v*` GitHub release
-   - Flutter: analyzes, validates, publishes to pub.dev, creates `flutter/v*` GitHub release
+   - Flutter: triggered separately by the `flutter/v*` tag via `release-flutter.yml` — analyzes, validates, publishes to pub.dev, creates `flutter/v*` GitHub release
    - iOS: builds and tests the root `Package.swift`, then creates `ios/v*` GitHub release (iOS is distributed via SPM using the SemVer `v*` tag)
 
-Flutter publish auth: automated publishing uses GitHub Actions OIDC (`id-token: write`) and `dart-lang/setup-dart` in the Flutter publish job.
+Flutter publish auth: automated publishing uses GitHub Actions OIDC (`id-token: write`) and `dart-lang/setup-dart`. The Flutter job runs in `release-flutter.yml` under the `pub-dev` environment, which is required for OIDC trusted publishing on pub.dev.
 
 #### Swift Package Index (Optional)
 
@@ -300,6 +300,7 @@ No secrets required. Publishing uses GitHub Actions OIDC — pub.dev is configur
 | --- | --- |
 | `release-js.yml` | Push to `main` |
 | `release-mobile.yml` | Push of `@quiltt/core@*` tag |
+| `release-flutter.yml` | Push of `flutter/v*` tag |
 | `ci-js.yml` | Push to `main`, pull requests |
 | `ci-android.yml` | Push/PR touching `packages/android/**` |
 | `ci-flutter.yml` | Push/PR touching `packages/flutter/**` |

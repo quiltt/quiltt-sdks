@@ -36,6 +36,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.ref }}
+          token: ${{ secrets.QUILTTY_RELEASE_GITHUB_TOKEN }}
 
       - uses: dart-lang/setup-dart@v1
 
@@ -50,7 +51,20 @@ jobs:
       - name: Validate package
         run: flutter pub publish --dry-run
 
+      - name: Check if version already published
+        id: check_published
+        run: |
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://pub.dev/packages/quiltt_connector/versions/${{ steps.version.outputs.version }}.json")
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "Version ${{ steps.version.outputs.version }} already published to pub.dev, skipping"
+            echo "already_published=true" >> $GITHUB_OUTPUT
+          else
+            echo "already_published=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Publish to pub.dev
+        if: steps.check_published.outputs.already_published != 'true'
         run: flutter pub publish --force
 
       - name: Create GitHub Release
