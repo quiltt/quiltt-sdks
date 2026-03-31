@@ -2,6 +2,8 @@
 
 [![npm version](https://badge.fury.io/js/@quiltt%2Fcore.svg)](https://badge.fury.io/js/@quiltt%2Fcore)
 [![CI](https://github.com/quiltt/quiltt-sdks/actions/workflows/ci-js.yml/badge.svg?branch=main)](https://github.com/quiltt/quiltt-sdks/actions/workflows/ci-js.yml)
+[![npm unpacked size](https://img.shields.io/npm/unpacked-size/@quiltt/core)](https://www.npmjs.com/package/@quiltt/core)
+[![npm bundle size](https://img.shields.io/bundlephobia/minzip/@quiltt/core)](https://bundlephobia.com/package/@quiltt/core)
 
 `@quiltt/core` provides essential primitives for building Javascript-based applications with Quiltt. It provides an Auth API client and modules for handling JSON Web Tokens (JWT), observables, storage management, timeouts, API handling, and Typescript types.
 

@@ -103,7 +103,7 @@
     "rxjs": "^7.8.2"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.7",
+    "@biomejs/biome": "2.4.10",
     "@types/node": "24.12.0",
     "@types/rails__actioncable": "8.0.3",
     "@types/react": "19.2.14",

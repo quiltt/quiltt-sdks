@@ -9,7 +9,7 @@
     "prebuild": "if [ \"$CI\" = \"true\" ]; then pnpm install --store=node_modules/.pnpm-store; fi && turbo run prebuild",
     "build": "turbo run build",
     "build:packages": "turbo run build --filter='./packages/*'",
-    "bundlesize": "bundlesize",
+    "bundlesize": "size-limit",
     "changeset": "npx changeset",
     "check:packages": "pnpm check-dependency-version-consistency .",
     "clean": "turbo run clean",
@@ -24,7 +24,7 @@
     "postversion": "pnpm exec pnpm install --filter=./packages/** "
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.7",
+    "@biomejs/biome": "2.4.10",
     "@changesets/changelog-github": "0.6.0",
     "@changesets/cli": "2.30.0",
     "@testing-library/react": "16.3.2",
@@ -32,7 +32,8 @@
     "@types/node": "24.12.0",
     "@vitejs/plugin-react": "6.0.1",
     "@vitest/coverage-istanbul": "4.1.2",
-    "bundlesize": "0.18.2",
+    "@size-limit/file": "12.0.1",
+    "size-limit": "12.0.1",
     "check-dependency-version-consistency": "6.0.0",
     "happy-dom": "20.8.9",
     "turbo": "2.9.1",
@@ -52,24 +53,29 @@
     ],
     "overrides": {
       "iltorb": "npm:noop2@^2.0.0",
-      "undici@<=7.24.1": "7.24.1"
+      "undici@<=7.24.1": "^7.24.1"
     }
   },
-  "bundlesize": [
+  "size-limit": [
     {
       "path": "./packages/core/dist/index.js",
-      "maxSize": "5 kB",
-      "compression": "gzip"
+      "limit": "5 kB"
     },
     {
       "path": "./packages/react/dist/index.js",
-      "maxSize": "10 kB",
-      "compression": "gzip"
+      "limit": "10 kB"
     },
     {
       "path": "./packages/react-native/dist/index.js",
-      "maxSize": "10 kB",
-      "compression": "gzip"
+      "limit": "10 kB"
+    },
+    {
+      "path": "./packages/vue/dist/index.js",
+      "limit": "10 kB"
+    },
+    {
+      "path": "./packages/capacitor/dist/index.js",
+      "limit": "10 kB"
     }
   ]
 }

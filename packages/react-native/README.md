@@ -2,6 +2,8 @@
 
 [![npm version](https://badge.fury.io/js/@quiltt%2Freact-native.svg)](https://badge.fury.io/js/@quiltt%2Freact-native)
 [![CI](https://github.com/quiltt/quiltt-sdks/actions/workflows/ci-js.yml/badge.svg?branch=main)](https://github.com/quiltt/quiltt-sdks/actions/workflows/ci-js.yml)
+[![npm unpacked size](https://img.shields.io/npm/unpacked-size/@quiltt/react-native)](https://www.npmjs.com/package/@quiltt/react-native)
+[![npm bundle size](https://img.shields.io/bundlephobia/minzip/@quiltt/react-native)](https://bundlephobia.com/package/@quiltt/react-native)
 
 `@quiltt/react-native` provides React Native Components for integrating Quiltt Connector into React Native and Expo applications.
 

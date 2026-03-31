@@ -71,7 +71,7 @@
     "@quiltt/vue": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.7",
+    "@biomejs/biome": "2.4.10",
     "@capacitor/android": "8.2.0",
     "@capacitor/core": "8.2.0",
     "@capacitor/ios": "8.2.0",
