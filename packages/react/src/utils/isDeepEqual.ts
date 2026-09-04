@@ -7,6 +7,8 @@
  * ```ts
  * isDeepEqual({ a: 1, b: { c: 2 } }, { a: 1, b: { c: 2 } }) // true
  * isDeepEqual({ a: 1, b: { c: 2 } }, { a: 1, b: { c: 3 } }) // false
+ * isDeepEqual(undefined, undefined) // true
+ * isDeepEqual(null, null) // true
  * ```
  */
 export const isDeepEqual = (obj1: unknown, obj2: unknown): boolean => {

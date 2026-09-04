@@ -140,12 +140,13 @@ export const QuilttPlugin: Plugin<[QuilttPluginOptions?]> = {
     stopSessionWatcher = watch(
       () => session.value,
       (newSession, oldSession) => {
-        // Reset the GraphQL store whenever the session actually changes (mirrors
-        // React's QuilttAuthProvider). Skip the initial immediate run, where Vue
-        // passes `undefined` as the previous value.
+        // Reset the Apollo store whenever the session changes so data cached under a
+        // previous session is never served to a different one. Skip the initial immediate
+        // run, where Vue passes `undefined` as the previous value.
         if (oldSession !== undefined && newSession !== oldSession) {
           apolloClient.resetStore().catch(() => {
-            // resetStore rejects if in-flight queries are aborted; safe to ignore.
+            // resetStore cancels and refetches active queries; the rejection it emits for the
+            // cancelled in-flight queries is expected, so ignore it.
           })
         }
 
