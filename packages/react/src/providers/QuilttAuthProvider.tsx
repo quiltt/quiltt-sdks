@@ -94,10 +94,14 @@ export const QuilttAuthProvider: FC<QuilttAuthProviderProps> = ({
     }
   }, [token, session])
 
-  // Reset Client Store when session changes (using deep comparison)
+  // Reset the Apollo store when the session changes so data cached under a previous
+  // session is never served to a different one.
   useEffect(() => {
     if (!isDeepEqual(session, previousSessionRef.current)) {
-      apolloClient.resetStore()
+      apolloClient.resetStore().catch(() => {
+        // resetStore cancels and refetches active queries; the rejection it emits for the
+        // cancelled in-flight queries is expected, so ignore it.
+      })
       previousSessionRef.current = session
     }
   }, [session, apolloClient])
