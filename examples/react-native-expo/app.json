@@ -41,7 +41,9 @@
         }
       ],
       "@config-plugins/detox",
-      "./plugins/withPackagingOptions"
+      "./plugins/withPackagingOptions",
+      "expo-font",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true
