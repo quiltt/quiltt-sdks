@@ -150,6 +150,16 @@ describe('QuilttConnector', () => {
       )
     })
 
+    it('should report failure instead of throwing when the URL has a malformed escape sequence', async () => {
+      const malformedUrl = 'https://oauth.test.com/callback?code=abc%2520%ZZxyz'
+
+      const onFailure = vi.fn()
+      await expect(handleOAuthUrl(malformedUrl, onFailure)).resolves.toBeUndefined()
+
+      expect(Linking.openURL).not.toHaveBeenCalled()
+      expect(onFailure).toHaveBeenCalledWith(expect.any(Error))
+    })
+
     it('should handle URL objects', async () => {
       const urlObject = new URL('https://oauth.test.com/callback')
       await handleOAuthUrl(urlObject)

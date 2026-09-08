@@ -16,10 +16,11 @@ Future<void> handleOAuthUrl(
   void Function(ConnectorSDKOnEventExitCallback event)? onExit,
   void Function(ConnectorSDKOnExitErrorCallback event)? onExitError,
 }) async {
-  // Normalize the URL encoding to prevent issues with double-encoding
-  final normalizedUrl = URLUtils.normalizeUrlEncoding(oauthUrl);
-
   try {
+    // Normalization can throw on malformed escape sequences (e.g. "%ZZ"), so
+    // it must run inside this try to still report failure via fireOAuthFailure.
+    final normalizedUrl = URLUtils.normalizeUrlEncoding(oauthUrl);
+
     // Attempt to open the URL directly. We intentionally skip
     // `canLaunchUrlString()` as a preflight — it is unreliable on Android 11+
     // under package-visibility filtering, whereas `launchUrlString` itself
@@ -39,7 +40,7 @@ Future<void> handleOAuthUrl(
       );
     }
   } catch (e) {
-    debugPrint('Quiltt: Error opening OAuth URL: $normalizedUrl – $e');
+    debugPrint('Quiltt: Error opening OAuth URL: $oauthUrl – $e');
     fireOAuthFailure(
       connectorId,
       onEvent: onEvent,

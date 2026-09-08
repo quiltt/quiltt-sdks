@@ -122,10 +122,15 @@ export const handleOAuthUrl = async (
     return
   }
 
-  // Normalize the URL encoding
-  const normalizedUrl = normalizeUrlEncoding(urlString)
+  // Track whether normalization succeeded (and changed the URL) so the
+  // catch block can decide whether a fallback attempt is worthwhile.
+  let normalizedUrl = urlString
 
   try {
+    // Normalization can throw on malformed escape sequences (e.g. "%ZZ"), so
+    // it must run inside this try to still report failure via onFailure.
+    normalizedUrl = normalizeUrlEncoding(urlString)
+
     // Open the normalized URL directly without a preflight check, since
     // `openURL()` reports success/failure authoritatively.
     await Linking.openURL(normalizedUrl)
