@@ -44,8 +44,7 @@
       "./plugins/withPackagingOptions"
     ],
     "experiments": {
-      "typedRoutes": true,
-      "reactCanary": true
+      "typedRoutes": true
     }
   }
 }
