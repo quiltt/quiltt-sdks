@@ -277,6 +277,14 @@ jobs:
           exit 1
         working-directory: ./examples/react-native-expo
         env:
+          # @expo/cli 57 auto-installs the standalone React Native DevTools (Fusebox
+          # shell) at Metro startup unless headless. That install crashes Metro on
+          # Linux runners (chrome-sandbox SUID) and hangs it on macOS, so force
+          # headless mode to skip it in CI.
+          EXPO_UNSTABLE_HEADLESS: "1"
+          # Force IPv4 loopback: modern Node resolves 'localhost' to ::1 by default,
+          # but the readiness probe and Android's `adb reverse` need 127.0.0.1.
+          NODE_OPTIONS: "--dns-result-order=ipv4first"
           EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
           EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ""
           EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
@@ -319,6 +327,14 @@ jobs:
           exit 1
         working-directory: ./examples/react-native-expo
         env:
+          # @expo/cli 57 auto-installs the standalone React Native DevTools (Fusebox
+          # shell) at Metro startup unless headless. That install crashes Metro on
+          # Linux runners (chrome-sandbox SUID) and hangs it on macOS, so force
+          # headless mode to skip it in CI.
+          EXPO_UNSTABLE_HEADLESS: "1"
+          # Force IPv4 loopback: modern Node resolves 'localhost' to ::1 by default,
+          # but the readiness probe and Android's `adb reverse` need 127.0.0.1.
+          NODE_OPTIONS: "--dns-result-order=ipv4first"
           EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
           EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ""
           EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
@@ -527,6 +543,14 @@ jobs:
           exit 1
         working-directory: ./examples/react-native-expo
         env:
+          # @expo/cli 57 auto-installs the standalone React Native DevTools (Fusebox
+          # shell) at Metro startup unless headless. That install crashes Metro on
+          # Linux runners (chrome-sandbox SUID) and hangs it on macOS, so force
+          # headless mode to skip it in CI.
+          EXPO_UNSTABLE_HEADLESS: "1"
+          # Force IPv4 loopback: modern Node resolves 'localhost' to ::1 by default,
+          # but the readiness probe and Android's `adb reverse` need 127.0.0.1.
+          NODE_OPTIONS: "--dns-result-order=ipv4first"
           EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
           EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ""
           EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
@@ -704,6 +728,14 @@ jobs:
           exit 1
         working-directory: ./examples/react-native-expo
         env:
+          # @expo/cli 57 auto-installs the standalone React Native DevTools (Fusebox
+          # shell) at Metro startup unless headless. That install crashes Metro on
+          # Linux runners (chrome-sandbox SUID) and hangs it on macOS, so force
+          # headless mode to skip it in CI.
+          EXPO_UNSTABLE_HEADLESS: "1"
+          # Force IPv4 loopback: modern Node resolves 'localhost' to ::1 by default,
+          # but the readiness probe and Android's `adb reverse` need 127.0.0.1.
+          NODE_OPTIONS: "--dns-result-order=ipv4first"
           EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
           EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ""
           EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z

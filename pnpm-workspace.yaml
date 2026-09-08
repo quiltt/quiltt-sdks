@@ -45,3 +45,13 @@ overrides:
   'ws@<=8.21.1': 8.21.1
   'yargs@<18.0.0': ^18.1.0
   'yargs@>18.0.0 <=18.1.0': ^18.1.0
+minimumReleaseAgeExclude:
+  - '@expo/cli@57.0.23'
+  - '@expo/metro-file-map@57.0.3'
+  - '@expo/ui@57.0.17'
+  - babel-preset-expo@57.0.11
+  - expo-glass-effect@57.0.2
+  - expo-modules-core@57.0.17
+  - expo-modules-jsi@57.1.0
+  - expo-router@57.0.20
+  - expo@57.0.21
