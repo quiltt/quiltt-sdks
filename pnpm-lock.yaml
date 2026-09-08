@@ -17,6 +17,8 @@ overrides:
   brace-expansion@>4.0.0 <5.0.9: ^5.0.9
   browserslist@<=4.28.6: 4.28.7
   detox>yargs: 17.7.2
+  react-native>yargs: 17.7.2
+  '@react-native/codegen>yargs': 17.7.2
   fast-uri@<=3.1.5: 3.1.6
   h3@<=1.15.8: ^1.15.9
   iltorb: npm:noop2@^2.0.0
@@ -12499,7 +12501,7 @@ snapshots:
       hermes-parser: 0.29.1
       invariant: 2.2.4
       nullthrows: 1.1.1
-      yargs: 18.1.0
+      yargs: 17.7.2
 
   '@react-native/community-cli-plugin@0.81.5(supports-color@10.2.2)':
     dependencies:
@@ -18010,7 +18012,7 @@ snapshots:
       stacktrace-parser: 0.1.11
       whatwg-fetch: 3.6.20
       ws: 8.21.1
-      yargs: 18.1.0
+      yargs: 17.7.2
     optionalDependencies:
       '@types/react': 19.2.18
     transitivePeerDependencies:
