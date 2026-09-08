@@ -6,9 +6,9 @@ import '../../url_utils.dart';
 
 /// Handles opening an OAuth URL in an external browser.
 ///
-/// Wraps the preflight/launch sequence in a try/catch so that platform-channel
-/// failures (e.g. from [canLaunchUrlString] or [launchUrlString]) are handled
-/// gracefully and fire [fireOAuthFailure] instead of propagating.
+/// Wraps the launch sequence in a try/catch so that platform-channel failures
+/// (e.g. from [launchUrlString]) are handled gracefully and fire
+/// [fireOAuthFailure] instead of propagating.
 Future<void> handleOAuthUrl(
   String oauthUrl,
   String connectorId, {
@@ -16,22 +16,15 @@ Future<void> handleOAuthUrl(
   void Function(ConnectorSDKOnEventExitCallback event)? onExit,
   void Function(ConnectorSDKOnExitErrorCallback event)? onExitError,
 }) async {
-  // Normalize the URL encoding to prevent issues with double-encoding
-  final normalizedUrl = URLUtils.normalizeUrlEncoding(oauthUrl);
-
   try {
-    // Preflight: verify the device can handle this URL scheme
-    if (!await canLaunchUrlString(normalizedUrl)) {
-      debugPrint('Quiltt: Cannot open OAuth URL: $normalizedUrl');
-      fireOAuthFailure(
-        connectorId,
-        onEvent: onEvent,
-        onExit: onExit,
-        onExitError: onExitError,
-      );
-      return;
-    }
+    // Normalization can throw on malformed escape sequences (e.g. "%ZZ"), so
+    // it must run inside this try to still report failure via fireOAuthFailure.
+    final normalizedUrl = URLUtils.normalizeUrlEncoding(oauthUrl);
 
+    // Attempt to open the URL directly. We intentionally skip
+    // `canLaunchUrlString()` as a preflight — it is unreliable on Android 11+
+    // under package-visibility filtering, whereas `launchUrlString` itself
+    // reports success/failure authoritatively.
     final launched = await launchUrlString(
       normalizedUrl,
       mode: LaunchMode.externalApplication,
@@ -47,7 +40,7 @@ Future<void> handleOAuthUrl(
       );
     }
   } catch (e) {
-    debugPrint('Quiltt: Error opening OAuth URL: $normalizedUrl – $e');
+    debugPrint('Quiltt: Error opening OAuth URL: $oauthUrl – $e');
     fireOAuthFailure(
       connectorId,
       onEvent: onEvent,

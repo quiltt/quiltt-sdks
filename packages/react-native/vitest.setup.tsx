@@ -76,7 +76,6 @@ const mockLinking = {
   openURL: vi.fn(),
   addEventListener: vi.fn(),
   removeEventListener: vi.fn(),
-  canOpenURL: vi.fn(),
   getInitialURL: vi.fn(),
 }
 
@@ -88,7 +87,6 @@ vi.mock('react-native', () => ({
     openURL: vi.fn(),
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
-    canOpenURL: vi.fn(),
     getInitialURL: vi.fn(),
   },
   NativeModules: {

@@ -134,6 +134,11 @@ class QuilttConnectorWebViewTest {
     @Test
     fun handleOAuthUrl_withHTTPS_noBrowserFiresFailure() {
         val context = RuntimeEnvironment.getApplication()
+        // Robolectric is permissive about unresolved intents by default; opt in to
+        // strict checking so startActivity throws like it does on a real device
+        // when no browser can handle the intent.
+        shadowOf(context).checkActivities(true)
+
         val config = QuilttConnectorConnectConfiguration(
             connectorId = "test-connector",
             appLauncherUrl = "https://example.com/callback",

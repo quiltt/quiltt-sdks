@@ -3,6 +3,30 @@ import 'package:quiltt_connector/event.dart';
 import 'package:quiltt_connector/src/platform/oauth_utils.dart';
 
 void main() {
+  group('handleOAuthUrl', () {
+    test(
+      'reports failure instead of throwing when the URL has a malformed escape sequence',
+      () async {
+        const malformedUrl =
+            'https://oauth.test.com/callback?code=abc%2520%ZZxyz';
+
+        ConnectorSDKOnExitErrorCallback? captured;
+
+        await expectLater(
+          handleOAuthUrl(
+            malformedUrl,
+            'test-connector',
+            onExitError: (event) => captured = event,
+          ),
+          completes,
+        );
+
+        expect(captured, isNotNull);
+        expect(captured!.eventMetadata.connectorId, equals('test-connector'));
+      },
+    );
+  });
+
   group('fireOAuthFailure', () {
     test('invokes all callbacks', () {
       ConnectorSDKOnEventCallback? capturedEvent;
