@@ -213,16 +213,14 @@ class QuilttConnectorWebViewClient(private val params: QuilttConnectorWebViewCli
             return
         }
         
-        // Open the URL in the system browser
+        // Open the URL in the system browser. We intentionally skip
+        // `Intent.resolveActivity()` as a preflight — on Android 11+ it is
+        // subject to package-visibility filtering and can return null even when
+        // a browser is installed. `startActivity` throws
+        // `ActivityNotFoundException` if nothing can handle the intent.
         try {
             val intent = Intent(Intent.ACTION_VIEW, oauthUrl)
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            // Preflight: verify an app is available to handle this intent
-            if (intent.resolveActivity(params.context.packageManager) == null) {
-                Log.e(TAG, "No app available to open URL: $oauthUrl")
-                fireOAuthFailure()
-                return
-            }
             params.context.startActivity(intent)
         } catch (error: Exception) {
             Log.e(TAG, "Failed to open URL in browser: $oauthUrl", error)

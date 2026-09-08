@@ -250,13 +250,8 @@ class QuilttConnectorWebview: WKWebView, WKNavigationDelegate {
         }
 
         #if canImport(UIKit) && os(iOS)
-            // Preflight: verify the device can handle this URL scheme
-            guard UIApplication.shared.canOpenURL(oauthUrl) else {
-                print("handleOAuthUrl - Cannot open URL: \(oauthUrl)")
-                fireOAuthFailure()
-                return
-            }
-
+            // Attempt to open the URL directly without a preflight check, since
+            // the `open` completion handler below reports success/failure authoritatively.
             if #available(iOS 10.0, *) {
                 UIApplication.shared.open(oauthUrl, options: [:]) { success in
                     if !success {

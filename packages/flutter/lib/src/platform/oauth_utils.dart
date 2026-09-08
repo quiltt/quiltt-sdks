@@ -6,9 +6,9 @@ import '../../url_utils.dart';
 
 /// Handles opening an OAuth URL in an external browser.
 ///
-/// Wraps the preflight/launch sequence in a try/catch so that platform-channel
-/// failures (e.g. from [canLaunchUrlString] or [launchUrlString]) are handled
-/// gracefully and fire [fireOAuthFailure] instead of propagating.
+/// Wraps the launch sequence in a try/catch so that platform-channel failures
+/// (e.g. from [launchUrlString]) are handled gracefully and fire
+/// [fireOAuthFailure] instead of propagating.
 Future<void> handleOAuthUrl(
   String oauthUrl,
   String connectorId, {
@@ -20,18 +20,10 @@ Future<void> handleOAuthUrl(
   final normalizedUrl = URLUtils.normalizeUrlEncoding(oauthUrl);
 
   try {
-    // Preflight: verify the device can handle this URL scheme
-    if (!await canLaunchUrlString(normalizedUrl)) {
-      debugPrint('Quiltt: Cannot open OAuth URL: $normalizedUrl');
-      fireOAuthFailure(
-        connectorId,
-        onEvent: onEvent,
-        onExit: onExit,
-        onExitError: onExitError,
-      );
-      return;
-    }
-
+    // Attempt to open the URL directly. We intentionally skip
+    // `canLaunchUrlString()` as a preflight — it is unreliable on Android 11+
+    // under package-visibility filtering, whereas `launchUrlString` itself
+    // reports success/failure authoritatively.
     final launched = await launchUrlString(
       normalizedUrl,
       mode: LaunchMode.externalApplication,

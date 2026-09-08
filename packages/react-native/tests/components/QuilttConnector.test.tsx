@@ -75,7 +75,6 @@ describe('QuilttConnector', () => {
 
   beforeEach(() => {
     fetchSpy = vi.spyOn(global, 'fetch')
-    vi.spyOn(Linking, 'canOpenURL').mockImplementation(() => Promise.resolve(true))
     vi.spyOn(Linking, 'openURL').mockImplementation(() => Promise.resolve(true))
     capturedWebViewProps = null
     capturedWebViewRef = null
@@ -91,7 +90,6 @@ describe('QuilttConnector', () => {
   describe('handleOAuthUrl', () => {
     beforeEach(() => {
       vi.clearAllMocks()
-      vi.mocked(Linking.canOpenURL).mockResolvedValue(true)
       vi.mocked(Linking.openURL).mockResolvedValue(true)
     })
 
@@ -107,9 +105,6 @@ describe('QuilttConnector', () => {
     })
 
     it('should handle empty string URLs', async () => {
-      // Mock openURL to reject so the fallback also fails
-      vi.mocked(Linking.openURL).mockRejectedValue(new Error('Cannot open empty URL'))
-
       const onFailure = vi.fn()
       await handleOAuthUrl('', onFailure)
       expect(onFailure).toHaveBeenCalledWith(expect.any(Error))
@@ -119,50 +114,45 @@ describe('QuilttConnector', () => {
       expect(onFailure).toHaveBeenCalledWith(expect.any(Error))
     })
 
-    it('should call canOpenURL before openURL', async () => {
+    it('should open the URL directly without a preflight check', async () => {
       const url = 'https://oauth.test.com/callback'
       await handleOAuthUrl(url)
 
-      expect(Linking.canOpenURL).toHaveBeenCalledWith(url)
       expect(Linking.openURL).toHaveBeenCalledWith(url)
     })
 
-    it('should fire onFailure when canOpenURL returns false', async () => {
-      // Both canOpenURL and openURL must fail so the fallback also fails
-      vi.mocked(Linking.canOpenURL).mockResolvedValue(false)
+    it('should fire onFailure when openURL rejects', async () => {
       vi.mocked(Linking.openURL).mockRejectedValue(new Error('Cannot open'))
 
       const onFailure = vi.fn()
       await handleOAuthUrl('https://oauth.test.com/callback', onFailure)
 
-      expect(Linking.canOpenURL).toHaveBeenCalled()
       expect(onFailure).toHaveBeenCalledWith(expect.any(Error))
     })
 
-    it('should attempt fallback when primary open fails', async () => {
-      // Primary canOpenURL succeeds, openURL rejects, then fallback also rejects
-      vi.mocked(Linking.canOpenURL).mockResolvedValueOnce(true).mockResolvedValueOnce(false)
+    it('should not fall back to the raw double-encoded URL', async () => {
+      const doubleEncodedUrl = 'https%3A%2F%2Foauth.test.com%2Fcallback%3Fcode%3Dabc%2520xyz'
       vi.mocked(Linking.openURL).mockRejectedValue(new Error('Cannot open'))
 
       const onFailure = vi.fn()
-      await handleOAuthUrl('https://oauth.test.com/callback', onFailure)
+      await handleOAuthUrl(doubleEncodedUrl, onFailure)
 
-      // Primary attempt: canOpenURL true, openURL rejects
-      // Fallback: canOpenURL false (second mock), onFailure fires
-      expect(onFailure).toHaveBeenCalled()
+      expect(Linking.openURL).toHaveBeenCalledTimes(1)
+      expect(Linking.openURL).toHaveBeenCalledWith('https://oauth.test.com/callback?code=abc%20xyz')
+      expect(onFailure).toHaveBeenCalledWith(expect.any(Error))
     })
 
     it('should normalize double-encoded URLs', async () => {
       const doubleEncodedUrl = 'https://oauth.test.com/callback?code=test%2520code'
       await handleOAuthUrl(doubleEncodedUrl)
-      expect(Linking.canOpenURL).toHaveBeenCalled()
-      expect(Linking.openURL).toHaveBeenCalled()
+      expect(Linking.openURL).toHaveBeenCalledWith(
+        'https://oauth.test.com/callback?code=test%20code'
+      )
     })
 
     it('should handle URL objects', async () => {
       const urlObject = new URL('https://oauth.test.com/callback')
       await handleOAuthUrl(urlObject)
-      expect(Linking.canOpenURL).toHaveBeenCalledWith('https://oauth.test.com/callback')
       expect(Linking.openURL).toHaveBeenCalledWith('https://oauth.test.com/callback')
     })
   })
@@ -377,7 +367,6 @@ describe('QuilttConnector', () => {
     it('should handle OAuth redirection', async () => {
       const url = new URL('https://oauth.test.com/callback')
       await handleOAuthUrl(url)
-      expect(Linking.canOpenURL).toHaveBeenCalledWith(url.toString())
       expect(Linking.openURL).toHaveBeenCalledWith(url.toString())
     })
   })

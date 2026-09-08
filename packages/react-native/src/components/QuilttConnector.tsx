@@ -107,40 +107,38 @@ export const handleOAuthUrl = async (
   oauthUrl: URL | string | null | undefined,
   onFailure?: (error: Error) => void
 ) => {
+  // Throw error if oauthUrl is null or undefined
+  if (oauthUrl == null) {
+    onFailure?.(new Error('OAuth URL missing'))
+    return
+  }
+
+  // Convert to string if it's a URL object
+  const urlString = oauthUrl.toString()
+
+  // Throw error if the resulting string is empty
+  if (!urlString || urlString.trim() === '') {
+    onFailure?.(new Error('Empty OAuth URL'))
+    return
+  }
+
+  // Normalize the URL encoding
+  const normalizedUrl = normalizeUrlEncoding(urlString)
+
   try {
-    // Throw error if oauthUrl is null or undefined
-    if (oauthUrl == null) {
-      throw new Error('OAuth URL missing')
-    }
-
-    // Convert to string if it's a URL object
-    const urlString = oauthUrl.toString()
-
-    // Throw error if the resulting string is empty
-    if (!urlString || urlString.trim() === '') {
-      throw new Error('Empty OAuth URL')
-    }
-
-    // Normalize the URL encoding
-    const normalizedUrl = normalizeUrlEncoding(urlString)
-
-    // Verify the device can handle this URL scheme before attempting to open
-    const canOpen = await Linking.canOpenURL(normalizedUrl)
-    if (!canOpen) {
-      throw new Error(`Device cannot open OAuth URL: ${normalizedUrl}`)
-    }
-
-    // Open the normalized URL
+    // Open the normalized URL directly without a preflight check, since
+    // `openURL()` reports success/failure authoritatively.
     await Linking.openURL(normalizedUrl)
   } catch (error) {
     console.error('OAuth URL handling error:', error)
 
-    // Only try the fallback if oauthUrl is not null
-    if (oauthUrl != null) {
+    // Only retry with the original URL if normalization changed it AND it is
+    // still a well-formed HTTPS URL. Opening a double-encoded value (e.g.
+    // "https%3A%2F%2F…") has no resolvable scheme and is guaranteed to fail.
+    if (urlString !== normalizedUrl && /^https:\/\//i.test(urlString)) {
       try {
-        const fallbackUrl = typeof oauthUrl === 'string' ? oauthUrl : oauthUrl.toString()
         console.log('Attempting fallback OAuth opening')
-        await Linking.openURL(fallbackUrl)
+        await Linking.openURL(urlString)
         return // fallback succeeded
       } catch (fallbackError) {
         console.error('Fallback OAuth opening failed:', fallbackError)
