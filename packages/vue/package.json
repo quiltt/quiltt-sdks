@@ -1,6 +1,6 @@
 {
   "name": "@quiltt/vue",
-  "version": "6.1.1",
+  "version": "6.1.2",
   "description": "Vue 3 Composables and Components for Quiltt Connector",
   "keywords": [
     "quiltt",

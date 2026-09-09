@@ -1,5 +1,13 @@
 # @quiltt/capacitor
 
+## 6.1.2
+
+### Patch Changes
+
+- Updated dependencies [[`295fa70`](https://github.com/quiltt/quiltt-sdks/commit/295fa702a7c01685c81f7cf5b9e0d59584d6ccec)]:
+  - @quiltt/react@6.1.2
+  - @quiltt/vue@6.1.2
+
 ## 6.1.1
 
 ### Patch Changes

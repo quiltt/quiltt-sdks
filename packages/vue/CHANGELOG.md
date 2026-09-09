@@ -1,5 +1,14 @@
 # @quiltt/vue
 
+## 6.1.2
+
+### Patch Changes
+
+- [#547](https://github.com/quiltt/quiltt-sdks/pull/547) [`295fa70`](https://github.com/quiltt/quiltt-sdks/commit/295fa702a7c01685c81f7cf5b9e0d59584d6ccec) Thanks [@rubendinho](https://github.com/rubendinho)! - Prevent an unhandled promise rejection in `QuilttAuthProvider` when the session changes. `resetStore()` cancels in-flight queries while clearing data cached under the previous session, and can reject while doing so — the provider now catches and ignores this expected rejection, matching the handling already in the `vue` plugin.
+
+- Updated dependencies []:
+  - @quiltt/core@6.1.2
+
 ## 6.1.1
 
 ### Patch Changes

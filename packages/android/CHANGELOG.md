@@ -1,5 +1,13 @@
 # @quiltt/android
 
+## 6.1.2
+
+### Patch Changes
+
+- [#552](https://github.com/quiltt/quiltt-sdks/pull/552) [`54a7d8b`](https://github.com/quiltt/quiltt-sdks/commit/54a7d8b717a15e76f4c641ef87d8d5ecbda9e45e) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Fix OAuth handoff aborting on some Android 11+ devices when the URL-open preflight misreports. The mobile SDKs no longer treat `canOpenURL`/`canLaunchUrl`/`resolveActivity` as authoritative — they attempt to open the OAuth URL directly and fire `onExitError` only when the open itself fails, so bank redirects succeed on devices where package-visibility filtering would otherwise abort the flow.
+
+  Fix `@quiltt/react-native` retrying the fallback URL with the raw double-encoded value, which could never open. The fallback now runs only when normalization changed the URL and the original is a well-formed HTTPS URL.
+
 ## 6.1.1
 
 ## 6.1.0
