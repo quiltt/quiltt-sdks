@@ -121,6 +121,9 @@ jobs:
       - name: Dispatch Flutter release
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
+          # Required by the gh CLI; github.token has actions:write (declared at
+          # the job level), which is enough to trigger a workflow_dispatch.
+          GH_TOKEN: ${{ github.token }}
         run: |
           # Run release-flutter.yml at the flutter/v* tag ref so the OIDC token
           # carries refs/tags/flutter/v*, matching the pub.dev tag pattern.

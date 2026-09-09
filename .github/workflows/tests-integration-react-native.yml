@@ -15,6 +15,13 @@ on:
       - "packages/core/**"
   workflow_dispatch:
 
+# Cancel superseded runs on the same ref (e.g. a new push to a PR) instead of
+# letting them burn the full 20-40 min of runner time — the latest commit is the
+# only one that matters.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   pull-requests: read
@@ -23,9 +30,205 @@ permissions:
   actions: write
 
 jobs:
+  # Build each platform's native binary ONCE and share it with the Detox and
+  # Maestro test jobs below via artifacts. Previously every test job compiled
+  # the identical .app / APKs itself (2x iOS + 2x Android per run).
+  build-react-native:
+    name: Build RN binary (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: android
+            os: ubuntu-latest
+          - platform: ios
+            os: macos-latest
+    steps:
+      - name: Free disk space
+        if: matrix.platform == 'android'
+        run: |
+          echo "=== Before cleanup ==="
+          df -h
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /usr/local/lib/android/sdk/ndk
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf /usr/local/.ghcup
+          sudo rm -rf /usr/local/graalvm
+          sudo rm -rf /usr/local/share/powershell
+          sudo rm -rf /usr/local/share/chromium
+          sudo rm -rf /usr/local/lib/node_modules
+          sudo apt-get clean
+          docker rmi $(docker image ls -aq) 2>/dev/null || true
+          echo "=== After cleanup ==="
+          df -h
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup environment
+        uses: ./.github/actions/setup-js
+        with:
+          # Pin Node 22 — Detox 20.x crashes on Node 24 (yargs.scriptName not a function). Remove pin once Detox supports Node 24.
+          node-version: "22"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: ./examples/react-native-expo
+
+      # --- Android native build prep (moved out of the test jobs) ---
+      - name: Setup Java
+        if: matrix.platform == 'android'
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Cache Gradle
+        if: matrix.platform == 'android'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Cache Android SDK components
+        if: matrix.platform == 'android'
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/cmake/3.22.1
+            /usr/local/lib/android/sdk/ndk/26.3.11579264
+          key: android-sdk-components-${{ runner.os }}-cmake-3.22.1-ndk-26.3.11579264
+
+      - name: Preinstall Android SDK components
+        if: matrix.platform == 'android'
+        run: |
+          SDK_ROOT="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(command -v sdkmanager)"
+          fi
+
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" "cmake;3.22.1" "ndk;26.3.11579264"
+
+      # --- iOS native build prep (moved out of the test jobs) ---
+      - name: Cache CocoaPods
+        if: matrix.platform == 'ios'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ./examples/react-native-expo/ios/Pods
+            ~/Library/Caches/CocoaPods
+            ~/.cocoapods
+          key: ${{ runner.os }}-pods-${{ hashFiles('**/Podfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pods-
+
+      - name: Cache iOS DerivedData
+        if: matrix.platform == 'ios'
+        uses: actions/cache@v4
+        with:
+          path: ./examples/react-native-expo/ios/build
+          key: ${{ runner.os }}-ios-build-${{ hashFiles('**/Podfile.lock', '**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-ios-build-
+
+      # --- Install deps + compile once ---
+      # The native ios/ + android/ projects are committed, so there is no
+      # `expo prebuild` here — that also keeps the CocoaPods/DerivedData/Gradle
+      # caches above effective (prebuild would churn the native projects and
+      # force a full rebuild every run).
+      - name: Install CocoaPods dependencies (iOS)
+        if: matrix.platform == 'ios'
+        run: pod install
+        working-directory: ./examples/react-native-expo/ios
+
+      - name: Build iOS binary
+        if: matrix.platform == 'ios'
+        run: pnpm run test:ios:build
+        working-directory: ./examples/react-native-expo
+        env:
+          NODE_OPTIONS: "--experimental-require-module"
+          EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
+          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ""
+          EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
+          EXPO_PUBLIC_INSTITUTION_SEARCH_TERM: test
+
+      - name: Package iOS app for sharing
+        if: matrix.platform == 'ios'
+        run: |
+          test -d ios/build/Build/Products/Debug-iphonesimulator/reactnativeexpo.app || {
+            echo "iOS .app not found";
+            ls -la ios/build/Build/Products/Debug-iphonesimulator || true;
+            exit 1;
+          }
+          tar -czf rn-ios-app.tar.gz ios/build/Build/Products/Debug-iphonesimulator/reactnativeexpo.app
+          ls -lh rn-ios-app.tar.gz
+        working-directory: ./examples/react-native-expo
+
+      - name: Upload iOS app artifact
+        if: matrix.platform == 'ios'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rn-ios-app
+          path: ./examples/react-native-expo/rn-ios-app.tar.gz
+          retention-days: 3
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Build Android binary
+        if: matrix.platform == 'android'
+        run: pnpm run test:android:build
+        working-directory: ./examples/react-native-expo
+        env:
+          NODE_OPTIONS: "--experimental-require-module"
+          EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
+          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ""
+          EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
+          EXPO_PUBLIC_INSTITUTION_SEARCH_TERM: test
+
+      - name: Package Android APKs for sharing
+        if: matrix.platform == 'android'
+        run: |
+          test -f android/app/build/outputs/apk/debug/app-debug.apk || {
+            echo "Debug APK not found";
+            ls -la android/app/build/outputs/apk/debug/ || true;
+            exit 1;
+          }
+          test -f android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk || {
+            echo "androidTest APK not found";
+            ls -la android/app/build/outputs/apk/androidTest/debug/ || true;
+            exit 1;
+          }
+          tar -czf rn-android-apks.tar.gz \
+            android/app/build/outputs/apk/debug/app-debug.apk \
+            android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          ls -lh rn-android-apks.tar.gz
+        working-directory: ./examples/react-native-expo
+
+      - name: Upload Android APKs artifact
+        if: matrix.platform == 'android'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rn-android-apks
+          path: ./examples/react-native-expo/rn-android-apks.tar.gz
+          retention-days: 3
+          if-no-files-found: error
+          compression-level: 0
+
   test-react-native-expo:
     name: React Native Expo Detox Smoke (${{ matrix.platform }})
     runs-on: ${{ matrix.os }}
+    needs: build-react-native
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -77,44 +280,14 @@ jobs:
         run: pnpm install --frozen-lockfile
         working-directory: ./examples/react-native-expo
 
+      # reactivecircus/android-emulator-runner provisions the SDK via sdkmanager,
+      # which needs a JDK even though no Gradle build happens in this job anymore.
       - name: Setup Java
         if: matrix.platform == 'android'
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: "17"
-
-      - name: Cache Gradle
-        if: matrix.platform == 'android'
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      - name: Cache Android SDK components
-        if: matrix.platform == 'android'
-        uses: actions/cache@v4
-        with:
-          path: |
-            /usr/local/lib/android/sdk/cmake/3.22.1
-            /usr/local/lib/android/sdk/ndk/26.3.11579264
-          key: android-sdk-components-${{ runner.os }}-cmake-3.22.1-ndk-26.3.11579264
-
-      - name: Preinstall Android SDK components
-        if: matrix.platform == 'android'
-        run: |
-          SDK_ROOT="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
-          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
-          if [ ! -x "$SDKMANAGER" ]; then
-            SDKMANAGER="$(command -v sdkmanager)"
-          fi
-
-          yes | "$SDKMANAGER" --licenses > /dev/null || true
-          "$SDKMANAGER" "cmake;3.22.1" "ndk;26.3.11579264"
 
       - name: AVD cache
         if: matrix.platform == 'android'
@@ -125,27 +298,6 @@ jobs:
             ~/.android/avd/*
             ~/.android/adb*
           key: avd-34-default-x86_64
-
-      - name: Cache CocoaPods
-        if: matrix.platform == 'ios'
-        uses: actions/cache@v4
-        with:
-          path: |
-            ./examples/react-native-expo/ios/Pods
-            ~/Library/Caches/CocoaPods
-            ~/.cocoapods
-          key: ${{ runner.os }}-pods-${{ hashFiles('**/Podfile.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-pods-
-
-      - name: Cache iOS DerivedData
-        if: matrix.platform == 'ios'
-        uses: actions/cache@v4
-        with:
-          path: ./examples/react-native-expo/ios/build
-          key: ${{ runner.os }}-ios-build-${{ hashFiles('**/Podfile.lock', '**/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-ios-build-
 
       - name: Cache Detox framework
         if: matrix.platform == 'ios'
@@ -201,47 +353,36 @@ jobs:
       #     echo "::add-mask::$TOKEN"
       #     echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
 
-      - name: Build app
-        run: pnpm run build
-        working-directory: ./examples/react-native-expo
-        env:
-          NODE_OPTIONS: "--experimental-require-module"
-          EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
-          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ""
-          EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
-          EXPO_PUBLIC_INSTITUTION_SEARCH_TERM: test
+      - name: Download built app
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.platform == 'ios' && 'rn-ios-app' || 'rn-android-apks' }}
 
-      - name: Build for testing (iOS)
-        if: matrix.platform == 'ios'
+      - name: Extract built app
         run: |
-          CI=1 pnpm exec expo prebuild --platform ios --clean
-          pnpm run test:ios:build
-        working-directory: ./examples/react-native-expo
+          cd examples/react-native-expo
+          case "$PLATFORM" in
+            ios) ARCH="rn-ios-app.tar.gz" ;;
+            *)   ARCH="rn-android-apks.tar.gz" ;;
+          esac
+          TARBALL="$(find "$GITHUB_WORKSPACE" -name "$ARCH" -print -quit)"
+          if [ -z "$TARBALL" ]; then
+            echo "::error::Built app tarball ($ARCH) not found in workspace"
+            find "$GITHUB_WORKSPACE" -name '*.tar.gz' || true
+            exit 1
+          fi
+          tar -xzf "$TARBALL"
+          rm -f "$TARBALL"
+          # Sanity-check the binary landed where Detox expects it.
+          if [ "$PLATFORM" = "ios" ]; then
+            test -d ios/build/Build/Products/Debug-iphonesimulator/reactnativeexpo.app \
+              && echo "iOS app present" || { echo "::error::iOS app missing after extract"; exit 1; }
+          else
+            ls -la android/app/build/outputs/apk/debug/ || true
+            ls -la android/app/build/outputs/apk/androidTest/debug/ || true
+          fi
         env:
-          NODE_OPTIONS: "--experimental-require-module"
-          EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
-          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ""
-          EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
-          EXPO_PUBLIC_INSTITUTION_SEARCH_TERM: test
-
-      - name: Build for testing (Android)
-        if: matrix.platform == 'android'
-        run: pnpm run test:android:build
-        working-directory: ./examples/react-native-expo
-        env:
-          NODE_OPTIONS: "--experimental-require-module"
-          EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
-          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ""
-          EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
-          EXPO_PUBLIC_INSTITUTION_SEARCH_TERM: test
-
-      - name: Verify APK files exist
-        if: matrix.platform == 'android'
-        run: |
-          echo "Checking for APK files..."
-          ls -la android/app/build/outputs/apk/debug/ || echo "Debug APK directory not found"
-          ls -la android/app/build/outputs/apk/androidTest/debug/ || echo "Test APK directory not found"
-        working-directory: ./examples/react-native-expo
+          PLATFORM: ${{ matrix.platform }}
 
       - name: Create AVD and generate snapshot for caching
         if: matrix.platform == 'android' && steps.avd-cache.outputs.cache-hit != 'true'
@@ -424,6 +565,7 @@ jobs:
   test-react-native-expo-maestro:
     name: React Native Expo Maestro (Android)
     runs-on: ubuntu-latest
+    needs: build-react-native
     timeout-minutes: 90
     steps:
       - name: Free disk space
@@ -465,40 +607,13 @@ jobs:
         run: pnpm install --frozen-lockfile
         working-directory: ./examples/react-native-expo
 
+      # reactivecircus/android-emulator-runner provisions the SDK via sdkmanager,
+      # which needs a JDK even though no Gradle build happens in this job anymore.
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: "17"
-
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      - name: Cache Android SDK components
-        uses: actions/cache@v4
-        with:
-          path: |
-            /usr/local/lib/android/sdk/cmake/3.22.1
-            /usr/local/lib/android/sdk/ndk/26.3.11579264
-          key: android-sdk-components-${{ runner.os }}-cmake-3.22.1-ndk-26.3.11579264
-
-      - name: Preinstall Android SDK components
-        run: |
-          SDK_ROOT="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
-          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
-          if [ ! -x "$SDKMANAGER" ]; then
-            SDKMANAGER="$(command -v sdkmanager)"
-          fi
-
-          yes | "$SDKMANAGER" --licenses > /dev/null || true
-          "$SDKMANAGER" "cmake;3.22.1" "ndk;26.3.11579264"
 
       - name: Install Maestro CLI
         run: |
@@ -506,23 +621,23 @@ jobs:
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
           "$HOME/.maestro/bin/maestro" --version
 
-      - name: Build app
-        run: pnpm run build
-        working-directory: ./examples/react-native-expo
-        env:
-          EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
-          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ""
-          EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
-          EXPO_PUBLIC_INSTITUTION_SEARCH_TERM: test
+      - name: Download Android APKs
+        uses: actions/download-artifact@v4
+        with:
+          name: rn-android-apks
 
-      - name: Build Android binary
-        run: pnpm run test:android:build
-        working-directory: ./examples/react-native-expo
-        env:
-          EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
-          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ""
-          EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
-          EXPO_PUBLIC_INSTITUTION_SEARCH_TERM: test
+      - name: Extract Android APKs
+        run: |
+          cd examples/react-native-expo
+          TARBALL="$(find "$GITHUB_WORKSPACE" -name 'rn-android-apks.tar.gz' -print -quit)"
+          if [ -z "$TARBALL" ]; then
+            echo "::error::APK tarball not found in workspace"
+            find "$GITHUB_WORKSPACE" -name '*.tar.gz' || true
+            exit 1
+          fi
+          tar -xzf "$TARBALL"
+          rm -f "$TARBALL"
+          ls -la android/app/build/outputs/apk/debug/ || exit 1
 
       - name: Start Metro
         run: |
@@ -618,6 +733,7 @@ jobs:
   test-react-native-expo-maestro-ios:
     name: React Native Expo Maestro (iOS)
     runs-on: macos-latest
+    needs: build-react-native
     timeout-minutes: 90
     steps:
       - name: Checkout code
@@ -633,48 +749,30 @@ jobs:
         run: pnpm install --frozen-lockfile
         working-directory: ./examples/react-native-expo
 
-      - name: Cache CocoaPods
-        uses: actions/cache@v4
-        with:
-          path: |
-            ./examples/react-native-expo/ios/Pods
-            ~/Library/Caches/CocoaPods
-            ~/.cocoapods
-          key: ${{ runner.os }}-pods-${{ hashFiles('**/Podfile.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-pods-
-
-      - name: Cache iOS DerivedData
-        uses: actions/cache@v4
-        with:
-          path: ./examples/react-native-expo/ios/build
-          key: ${{ runner.os }}-ios-build-${{ hashFiles('**/Podfile.lock', '**/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-ios-build-
-
       - name: Install Maestro CLI
         run: |
           curl -fsSL "https://get.maestro.mobile.dev" | bash
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
           "$HOME/.maestro/bin/maestro" --version
 
-      - name: Build app
-        run: pnpm run build
-        working-directory: ./examples/react-native-expo
-        env:
-          EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
-          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ""
-          EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
-          EXPO_PUBLIC_INSTITUTION_SEARCH_TERM: test
+      - name: Download iOS app
+        uses: actions/download-artifact@v4
+        with:
+          name: rn-ios-app
 
-      - name: Build iOS binary
-        run: pnpm run test:ios:build
-        working-directory: ./examples/react-native-expo
-        env:
-          EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
-          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ""
-          EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
-          EXPO_PUBLIC_INSTITUTION_SEARCH_TERM: test
+      - name: Extract iOS app
+        run: |
+          cd examples/react-native-expo
+          TARBALL="$(find "$GITHUB_WORKSPACE" -name 'rn-ios-app.tar.gz' -print -quit)"
+          if [ -z "$TARBALL" ]; then
+            echo "::error::iOS app tarball not found in workspace"
+            find "$GITHUB_WORKSPACE" -name '*.tar.gz' || true
+            exit 1
+          fi
+          tar -xzf "$TARBALL"
+          rm -f "$TARBALL"
+          test -d ios/build/Build/Products/Debug-iphonesimulator/reactnativeexpo.app \
+            && echo "iOS app present" || { echo "::error::iOS app missing after extract"; exit 1; }
 
       - name: Boot iOS simulator and install app
         run: |
