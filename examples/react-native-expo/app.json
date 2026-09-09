@@ -40,8 +40,6 @@
           "backgroundColor": "#ffffff"
         }
       ],
-      "@config-plugins/detox",
-      "./plugins/withPackagingOptions",
       "expo-font",
       "expo-web-browser"
     ],

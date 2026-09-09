@@ -30,9 +30,9 @@ permissions:
   actions: write
 
 jobs:
-  # Build each platform's native binary ONCE and share it with the Detox and
-  # Maestro test jobs below via artifacts. Previously every test job compiled
-  # the identical .app / APKs itself (2x iOS + 2x Android per run).
+  # Build each platform's native binary ONCE and share it with the Maestro
+  # test jobs below via artifacts. Previously the (now-removed) Detox jobs also
+  # compiled the identical .app / APKs, so each platform was built twice per run.
   build-react-native:
     name: Build RN binary (${{ matrix.platform }})
     runs-on: ${{ matrix.os }}
@@ -72,9 +72,6 @@ jobs:
 
       - name: Setup environment
         uses: ./.github/actions/setup-js
-        with:
-          # Pin Node 22 — Detox 20.x crashes on Node 24 (yargs.scriptName not a function). Remove pin once Detox supports Node 24.
-          node-version: "22"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -154,7 +151,7 @@ jobs:
 
       - name: Build iOS binary
         if: matrix.platform == 'ios'
-        run: pnpm run test:ios:build
+        run: pnpm run build:ios
         working-directory: ./examples/react-native-expo
         env:
           NODE_OPTIONS: "--experimental-require-module"
@@ -185,9 +182,9 @@ jobs:
           if-no-files-found: error
           compression-level: 0
 
-      - name: Build Android binary
+      - name: Build Android APK
         if: matrix.platform == 'android'
-        run: pnpm run test:android:build
+        run: pnpm run build:android
         working-directory: ./examples/react-native-expo
         env:
           NODE_OPTIONS: "--experimental-require-module"
@@ -196,7 +193,7 @@ jobs:
           EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
           EXPO_PUBLIC_INSTITUTION_SEARCH_TERM: test
 
-      - name: Package Android APKs for sharing
+      - name: Package Android APK for sharing
         if: matrix.platform == 'android'
         run: |
           test -f android/app/build/outputs/apk/debug/app-debug.apk || {
@@ -204,363 +201,19 @@ jobs:
             ls -la android/app/build/outputs/apk/debug/ || true;
             exit 1;
           }
-          test -f android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk || {
-            echo "androidTest APK not found";
-            ls -la android/app/build/outputs/apk/androidTest/debug/ || true;
-            exit 1;
-          }
-          tar -czf rn-android-apks.tar.gz \
-            android/app/build/outputs/apk/debug/app-debug.apk \
-            android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-          ls -lh rn-android-apks.tar.gz
+          tar -czf rn-android-apk.tar.gz android/app/build/outputs/apk/debug/app-debug.apk
+          ls -lh rn-android-apk.tar.gz
         working-directory: ./examples/react-native-expo
 
-      - name: Upload Android APKs artifact
+      - name: Upload Android APK artifact
         if: matrix.platform == 'android'
         uses: actions/upload-artifact@v4
         with:
-          name: rn-android-apks
-          path: ./examples/react-native-expo/rn-android-apks.tar.gz
+          name: rn-android-apk
+          path: ./examples/react-native-expo/rn-android-apk.tar.gz
           retention-days: 3
           if-no-files-found: error
           compression-level: 0
-
-  test-react-native-expo:
-    name: React Native Expo Detox Smoke (${{ matrix.platform }})
-    runs-on: ${{ matrix.os }}
-    needs: build-react-native
-    timeout-minutes: 120
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: android
-            os: ubuntu-latest
-          - platform: ios
-            os: macos-latest
-    steps:
-      - name: Free disk space
-        if: matrix.platform == 'android'
-        run: |
-          echo "=== Before cleanup ==="
-          df -h
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /usr/local/share/boost
-          sudo rm -rf /opt/hostedtoolcache/CodeQL
-          sudo rm -rf /usr/local/lib/android/sdk/ndk
-          sudo rm -rf /usr/share/swift
-          sudo rm -rf /usr/local/.ghcup
-          sudo rm -rf /usr/local/graalvm
-          sudo rm -rf /usr/local/share/powershell
-          sudo rm -rf /usr/local/share/chromium
-          sudo rm -rf /usr/local/lib/node_modules
-          sudo apt-get clean
-          docker rmi $(docker image ls -aq) 2>/dev/null || true
-          echo "=== After cleanup ==="
-          df -h
-
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Setup environment
-        uses: ./.github/actions/setup-js
-        with:
-          # Pin Node 22 — Detox 20.x crashes on Node 24 (yargs.scriptName not a function). Remove pin once Detox supports Node 24.
-          node-version: "22"
-
-      - name: Enable KVM group perms
-        if: matrix.platform == 'android'
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-        working-directory: ./examples/react-native-expo
-
-      # reactivecircus/android-emulator-runner provisions the SDK via sdkmanager,
-      # which needs a JDK even though no Gradle build happens in this job anymore.
-      - name: Setup Java
-        if: matrix.platform == 'android'
-        uses: actions/setup-java@v4
-        with:
-          distribution: "temurin"
-          java-version: "17"
-
-      - name: AVD cache
-        if: matrix.platform == 'android'
-        uses: actions/cache@v4
-        id: avd-cache
-        with:
-          path: |
-            ~/.android/avd/*
-            ~/.android/adb*
-          key: avd-34-default-x86_64
-
-      - name: Cache Detox framework
-        if: matrix.platform == 'ios'
-        uses: actions/cache@v4
-        with:
-          path: ~/Library/Detox
-          key: ${{ runner.os }}-detox-framework-${{ hashFiles('**/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-detox-framework-
-
-      - name: Install Detox dependencies
-        if: matrix.platform == 'ios'
-        run: |
-          brew tap wix/brew
-          brew trust wix/brew
-          brew install applesimutils
-
-      - name: Build Detox framework cache
-        if: matrix.platform == 'ios'
-        run: |
-          cd ./examples/react-native-expo
-          pnpm exec detox clean-framework-cache
-          pnpm exec detox build-framework-cache
-
-      - name: List available Xcode versions
-        if: matrix.platform == 'ios'
-        run: |
-          xcrun xcode-select --print-path
-          xcodebuild -version
-
-      - name: Install iOS simulator runtime
-        if: matrix.platform == 'ios'
-        run: |
-          xcrun simctl list runtimes
-          echo "iOS runtimes:"
-          xcrun simctl list runtimes | grep iOS
-
-      # - name: Issue session token
-      #   id: auth
-      #   run: |
-      #     RESPONSE=$(curl -s -X POST https://auth.quiltt.io/v1/users/sessions \
-      #       -H "Authorization: Bearer ${{ secrets.QUILTT_API_KEY_SECRET }}" \
-      #       -H "Content-Type: application/json" \
-      #       -d '{"userId":"p_132giKejS3KH0xDyySC0d5"}')
-      #     TOKEN=$(echo "$RESPONSE" | jq -r '.token // empty')
-      #     if [ -z "$TOKEN" ]; then
-      #       echo "Warning: failed to issue session token; pre-auth checks will be skipped"
-      #       echo "Auth API response: $RESPONSE"
-      #       echo "preauth_required=false" >> "$GITHUB_OUTPUT"
-      #     else
-      #       echo "preauth_required=true" >> "$GITHUB_OUTPUT"
-      #     fi
-      #     echo "::add-mask::$TOKEN"
-      #     echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
-
-      - name: Download built app
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ matrix.platform == 'ios' && 'rn-ios-app' || 'rn-android-apks' }}
-
-      - name: Extract built app
-        run: |
-          cd examples/react-native-expo
-          case "$PLATFORM" in
-            ios) ARCH="rn-ios-app.tar.gz" ;;
-            *)   ARCH="rn-android-apks.tar.gz" ;;
-          esac
-          TARBALL="$(find "$GITHUB_WORKSPACE" -name "$ARCH" -print -quit)"
-          if [ -z "$TARBALL" ]; then
-            echo "::error::Built app tarball ($ARCH) not found in workspace"
-            find "$GITHUB_WORKSPACE" -name '*.tar.gz' || true
-            exit 1
-          fi
-          tar -xzf "$TARBALL"
-          rm -f "$TARBALL"
-          # Sanity-check the binary landed where Detox expects it.
-          if [ "$PLATFORM" = "ios" ]; then
-            test -d ios/build/Build/Products/Debug-iphonesimulator/reactnativeexpo.app \
-              && echo "iOS app present" || { echo "::error::iOS app missing after extract"; exit 1; }
-          else
-            ls -la android/app/build/outputs/apk/debug/ || true
-            ls -la android/app/build/outputs/apk/androidTest/debug/ || true
-          fi
-        env:
-          PLATFORM: ${{ matrix.platform }}
-
-      - name: Create AVD and generate snapshot for caching
-        if: matrix.platform == 'android' && steps.avd-cache.outputs.cache-hit != 'true'
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          target: default
-          arch: x86_64
-          profile: pixel_7_pro
-          avd-name: Pixel_API_34_AOSP
-          force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          disable-animations: false
-          script: echo 'Generated AVD snapshot for caching.'
-
-      - name: Start Metro (iOS)
-        if: matrix.platform == 'ios'
-        run: |
-          mkdir -p ./artifacts
-          nohup env CI=1 pnpm exec expo start --dev-client --port 8081 --localhost > ./artifacts/expo-metro.log 2>&1 &
-          echo "METRO_PID=$!" >> "$GITHUB_ENV"
-
-          for _ in {1..90}; do
-            if curl -fsS "http://127.0.0.1:8081/status" | grep -q "packager-status:running"; then
-              echo "Metro is ready"
-              exit 0
-            fi
-            sleep 2
-          done
-
-          echo "Metro did not become ready in time"
-          tail -n 200 ./artifacts/expo-metro.log || true
-          exit 1
-        working-directory: ./examples/react-native-expo
-        env:
-          # @expo/cli 57 auto-installs the standalone React Native DevTools (Fusebox
-          # shell) at Metro startup unless headless. That install crashes Metro on
-          # Linux runners (chrome-sandbox SUID) and hangs it on macOS, so force
-          # headless mode to skip it in CI.
-          EXPO_UNSTABLE_HEADLESS: "1"
-          # Force IPv4 loopback: modern Node resolves 'localhost' to ::1 by default,
-          # but the readiness probe and Android's `adb reverse` need 127.0.0.1.
-          NODE_OPTIONS: "--dns-result-order=ipv4first"
-          EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
-          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ""
-          EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
-          EXPO_PUBLIC_INSTITUTION_SEARCH_TERM: test
-
-      - name: Run Detox smoke tests (iOS)
-        if: matrix.platform == 'ios'
-        run: pnpm run test:ios:run:ci
-        working-directory: ./examples/react-native-expo
-        env:
-          PLATFORM: ios
-          DETOX_LOGLEVEL: trace
-          RCT_METRO_PORT: "8081"
-          E2E_PREAUTH_REQUIRED: "false"
-
-      - name: Stop Metro (iOS)
-        if: always() && matrix.platform == 'ios'
-        run: |
-          if [ -n "${METRO_PID:-}" ]; then
-            kill "$METRO_PID" || true
-          fi
-
-      - name: Start Metro (Android)
-        if: matrix.platform == 'android'
-        run: |
-          mkdir -p ./artifacts
-          nohup env CI=1 pnpm exec expo start --dev-client --port 8081 --localhost > ./artifacts/expo-metro-android.log 2>&1 &
-          echo "METRO_PID=$!" >> "$GITHUB_ENV"
-
-          for _ in {1..90}; do
-            if curl -fsS "http://127.0.0.1:8081/status" | grep -q "packager-status:running"; then
-              echo "Metro is ready"
-              exit 0
-            fi
-            sleep 2
-          done
-
-          echo "Metro did not become ready in time"
-          tail -n 200 ./artifacts/expo-metro-android.log || true
-          exit 1
-        working-directory: ./examples/react-native-expo
-        env:
-          # @expo/cli 57 auto-installs the standalone React Native DevTools (Fusebox
-          # shell) at Metro startup unless headless. That install crashes Metro on
-          # Linux runners (chrome-sandbox SUID) and hangs it on macOS, so force
-          # headless mode to skip it in CI.
-          EXPO_UNSTABLE_HEADLESS: "1"
-          # Force IPv4 loopback: modern Node resolves 'localhost' to ::1 by default,
-          # but the readiness probe and Android's `adb reverse` need 127.0.0.1.
-          NODE_OPTIONS: "--dns-result-order=ipv4first"
-          EXPO_PUBLIC_QUILTT_CLIENT_ID: ${{ secrets.QUILTT_CLIENT_ID }}
-          EXPO_PUBLIC_QUILTT_AUTH_TOKEN: ""
-          EXPO_PUBLIC_CONNECTOR_ID: 1h6bz4vo9z
-          EXPO_PUBLIC_INSTITUTION_SEARCH_TERM: test
-
-      - name: Run Detox smoke tests (Android)
-        if: matrix.platform == 'android'
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          target: default
-          arch: x86_64
-          profile: pixel_7_pro
-          avd-name: Pixel_API_34_AOSP
-          force-avd-creation: false
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          disable-animations: true
-          working-directory: ./examples/react-native-expo
-          script: |
-            adb wait-for-device
-            until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; do sleep 1; done
-            until [ "$(adb shell getprop init.svc.bootanim | tr -d '\r')" = "stopped" ]; do sleep 1; done
-            until adb shell pm path android >/dev/null 2>&1; do sleep 1; done
-            adb shell settings put global window_animation_scale 0
-            adb shell settings put global transition_animation_scale 0
-            adb shell settings put global animator_duration_scale 0
-            adb shell svc power stayon true
-            adb shell settings put global package_verifier_enable 0 || true
-            adb shell settings put global verifier_verify_adb_installs 0 || true
-            adb shell settings put global anr_show_background 0 || true
-            adb shell settings put global show_first_crash_dialog 0 || true
-            adb shell settings put global show_first_crash_dialog_dev_option 0 || true
-            adb shell settings put global hidden_api_policy 1 || true
-            adb shell settings put global hidden_api_policy_p_apps 1 || true
-            adb shell settings put global hidden_api_policy_pre_p_apps 1 || true
-            adb shell input keyevent KEYCODE_WAKEUP || true
-            adb shell input keyevent 82 || true
-            adb shell wm dismiss-keyguard || true
-
-            # Ensure the emulator can always reach Metro through localhost.
-            adb reverse tcp:8081 tcp:8081 || true
-            adb reverse --list || true
-
-            # Install APKs ahead of Detox.
-            adb install -r -g -t android/app/build/outputs/apk/debug/app-debug.apk
-            adb install -r -g -t android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-            adb shell am force-stop com.example || true
-            adb devices
-            pnpm run test:android:run:ci
-        env:
-          PLATFORM: android
-          DETOX_LOGLEVEL: trace
-          E2E_PREAUTH_REQUIRED: "false"
-          RCT_METRO_PORT: "8081"
-
-      - name: Stop Metro (Android)
-        if: always() && matrix.platform == 'android'
-        run: |
-          if [ -n "${METRO_PID:-}" ]; then
-            kill "$METRO_PID" || true
-          fi
-
-      - if: failure() && matrix.platform == 'ios'
-        name: Upload iOS test artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios_test_artifacts_${{ github.sha }}
-          path: |
-            ./examples/react-native-expo/artifacts
-            ./examples/react-native-expo/ios/build/logs
-          retention-days: 3
-          if-no-files-found: warn
-          compression-level: 6
-
-      - if: failure() && matrix.platform == 'android'
-        name: Upload Android test artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: android_test_artifacts_${{ github.sha }}
-          path: |
-            ./examples/react-native-expo/artifacts
-            ./examples/react-native-expo/android/app/build/outputs/androidTest-results
-          retention-days: 3
-          if-no-files-found: warn
-          compression-level: 6
 
   test-react-native-expo-maestro:
     name: React Native Expo Maestro (Android)
@@ -593,9 +246,6 @@ jobs:
 
       - name: Setup environment
         uses: ./.github/actions/setup-js
-        with:
-          # Pin Node 22 — Detox 20.x crashes on Node 24 (yargs.scriptName not a function). Remove pin once Detox supports Node 24.
-          node-version: "22"
 
       - name: Enable KVM group perms
         run: |
@@ -621,15 +271,15 @@ jobs:
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
           "$HOME/.maestro/bin/maestro" --version
 
-      - name: Download Android APKs
+      - name: Download Android APK
         uses: actions/download-artifact@v4
         with:
-          name: rn-android-apks
+          name: rn-android-apk
 
-      - name: Extract Android APKs
+      - name: Extract Android APK
         run: |
           cd examples/react-native-expo
-          TARBALL="$(find "$GITHUB_WORKSPACE" -name 'rn-android-apks.tar.gz' -print -quit)"
+          TARBALL="$(find "$GITHUB_WORKSPACE" -name 'rn-android-apk.tar.gz' -print -quit)"
           if [ -z "$TARBALL" ]; then
             echo "::error::APK tarball not found in workspace"
             find "$GITHUB_WORKSPACE" -name '*.tar.gz' || true
@@ -741,9 +391,6 @@ jobs:
 
       - name: Setup environment
         uses: ./.github/actions/setup-js
-        with:
-          # Pin Node 22 — Detox 20.x crashes on Node 24 (yargs.scriptName not a function). Remove pin once Detox supports Node 24.
-          node-version: "22"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

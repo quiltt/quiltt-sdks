@@ -8,8 +8,7 @@
     "paths": {
       "@/*": ["./src/*"]
     },
-    "types": ["jest", "detox/globals"],
     "verbatimModuleSyntax": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts", "e2e/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"]
 }

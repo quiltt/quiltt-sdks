@@ -89,8 +89,6 @@ android {
 
     namespace 'com.example'
     defaultConfig {
-        // detox-plugin-default-config
-        testBuildType System.getProperty('testBuildType', 'debug')
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
         applicationId 'com.example'
         minSdkVersion rootProject.ext.minSdkVersion
@@ -120,10 +118,7 @@ android {
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
-            // Detox-specific additions to pro-guard
-            def detoxProguardRulesPath = new File(["node", "--print", "require.resolve('detox/package.json')"].execute(null, rootDir).text.trim(), "../android/detox/proguard-rules-app.pro")
-            proguardFile(detoxProguardRulesPath)
-            
+
             def enablePngCrunchInRelease = findProperty('android.enablePngCrunchInReleaseBuilds') ?: 'true'
             crunchPngs enablePngCrunchInRelease.toBoolean()
         }
@@ -160,7 +155,6 @@ android {
 }
 
 dependencies {
-    androidTestImplementation('com.wix:detox:+')
     implementation 'androidx.appcompat:appcompat:1.6.1'
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
