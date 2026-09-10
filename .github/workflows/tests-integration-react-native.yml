@@ -118,17 +118,29 @@ jobs:
           "$SDKMANAGER" "cmake;3.22.1" "ndk;26.3.11579264"
 
       # --- iOS native build prep (moved out of the test jobs) ---
-      - name: Cache CocoaPods
+      # Split into two caches: the installed `Pods/` project state is only
+      # reused on an EXACT Podfile.lock match (no restore-keys) — restoring a
+      # stale Pods/ from a different Podfile.lock makes CocoaPods think local
+      # podspecs changed version and it refuses to resolve. The download
+      # caches are just fetched artifacts, so those are safe to reuse partially
+      # via restore-keys even on a cache-key miss.
+      - name: Cache CocoaPods (Pods project state)
+        if: matrix.platform == 'ios'
+        uses: actions/cache@v4
+        with:
+          path: ./examples/react-native-expo/ios/Pods
+          key: ${{ runner.os }}-pods-${{ hashFiles('**/Podfile.lock') }}
+
+      - name: Cache CocoaPods (download caches)
         if: matrix.platform == 'ios'
         uses: actions/cache@v4
         with:
           path: |
-            ./examples/react-native-expo/ios/Pods
             ~/Library/Caches/CocoaPods
             ~/.cocoapods
-          key: ${{ runner.os }}-pods-${{ hashFiles('**/Podfile.lock') }}
+          key: ${{ runner.os }}-pods-downloads-${{ hashFiles('**/Podfile.lock') }}
           restore-keys: |
-            ${{ runner.os }}-pods-
+            ${{ runner.os }}-pods-downloads-
 
       - name: Cache iOS DerivedData
         if: matrix.platform == 'ios'
@@ -146,7 +158,9 @@ jobs:
       # force a full rebuild every run).
       - name: Install CocoaPods dependencies (iOS)
         if: matrix.platform == 'ios'
-        run: pod install
+        # Fall back to a clean install if a restored Pods/ still conflicts
+        # with the committed Podfile.lock (e.g. after a cache key change).
+        run: pod install || (rm -rf Pods && pod install)
         working-directory: ./examples/react-native-expo/ios
 
       - name: Build iOS binary
@@ -184,7 +198,17 @@ jobs:
 
       - name: Build Android APK
         if: matrix.platform == 'android'
-        run: pnpm run build:android
+        # debug.keystore is committed (well-known, non-secret Android debug
+        # signing key), but regenerate it if it's ever missing so the build
+        # doesn't hard-fail on that alone.
+        run: |
+          if [ ! -f android/app/debug.keystore ]; then
+            keytool -genkeypair -v -keystore android/app/debug.keystore \
+              -storepass android -alias androiddebugkey -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          pnpm run build:android
         working-directory: ./examples/react-native-expo
         env:
           NODE_OPTIONS: "--experimental-require-module"
