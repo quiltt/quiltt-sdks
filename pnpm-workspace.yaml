@@ -46,6 +46,7 @@ overrides:
   'yargs@<18.0.0': ^18.1.0
   'yargs@>18.0.0 <=18.1.0': ^18.1.0
   'zod@3': 4.5.0
+  'es-module-lexer@2': 3.0.2
 minimumReleaseAgeExclude:
   - '@expo/cli@57.0.23'
   - '@expo/metro-file-map@57.0.3'
