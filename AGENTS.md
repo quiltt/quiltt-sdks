@@ -224,7 +224,7 @@ directories to the correct skills, MCP servers, and toolchain commands.
 
 ## JavaScript (`.js` / `.cjs` / `.mjs`) — Scripts & Config
 
-**Files:** `next.config.js`, `detox.config.js`, `postcss.config.cjs`, `scripts/*.mjs`, E2E jest configs
+**Files:** `next.config.js`, `postcss.config.cjs`, `scripts/*.mjs`, Playwright/Maestro E2E configs
 
 **Skills to load:** *(none repo-specific)*
 

@@ -54,36 +54,28 @@ Run on web:
 pnpm run web
 ```
 
-## E2E Tests (Detox)
+## E2E Tests (Maestro)
 
-Detox in this example is intentionally smoke-only (app launch + connector mount).
+End-to-end UI tests use [Maestro](https://maestro.mobile.dev), a black-box,
+accessibility-driven tool that runs the same flows on both iOS and Android with
+no in-app test instrumentation. Flows are plain YAML under `maestro/`:
 
-Build and run iOS smoke tests:
-
-```bash
-pnpm run test:ios
-```
-
-Build and run Android smoke tests:
-
-```bash
-pnpm run test:android
-```
-
-Run both platform test suites:
-
-```bash
-pnpm run test:e2e
-```
-
-## Connector Flow Tests (Maestro)
-
-Maestro flows are plain YAML and do not require compilation/transpilation.
+- `connector-flow.yaml` — launch the app and drive the Quiltt connector
+  (email/passcode entry) to a ready state.
+- `oauth-callback-flow.yaml` — launch the app, simulate an OAuth callback
+  redirect, and confirm the connector reaches a ready state.
 
 Install the Maestro CLI first:
 
 ```bash
 brew install maestro
+```
+
+Build a Debug app for the simulator/emulator you're targeting:
+
+```bash
+pnpm run build:ios     # requires macOS + Xcode
+pnpm run build:android # requires an Android SDK
 ```
 
 Run the connector flow:

@@ -39,8 +39,19 @@ yarn-error.*
 app-example
 
 # App builds
-android/
-ios/
+# The native ios/ + android/ projects ARE committed (so CI can skip `expo
+# prebuild` and rely on stable native-input cache keys for warm builds).
+# Only generated build outputs are ignored. debug.keystore is the well-known,
+# non-secret Android debug signing key (password "android") and is committed
+# so builds don't depend on it being regenerated.
+android/.gradle/
+android/**/build/
+android/local.properties
+ios/build/
+ios/Pods/
+ios/**/xcuserdata/
+ios/**/*.xcuserstate
+ios/.xcode.env.local
 
 # Test artifacts
 artifacts/
