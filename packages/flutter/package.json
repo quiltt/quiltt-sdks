@@ -1,6 +1,6 @@
 {
   "name": "@quiltt/flutter",
-  "version": "6.1.2",
+  "version": "6.1.3",
   "private": true,
   "scripts": {
     "lint": "flutter analyze && flutter analyze example"

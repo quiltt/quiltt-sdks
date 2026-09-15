@@ -1,3 +1,0 @@
----
-"@quiltt/core": patch
----

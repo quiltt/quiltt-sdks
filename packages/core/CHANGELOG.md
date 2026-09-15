@@ -1,5 +1,11 @@
 # @quiltt/core
 
+## 6.1.3
+
+### Patch Changes
+
+- [#558](https://github.com/quiltt/quiltt-sdks/pull/558) [`b09ad7c`](https://github.com/quiltt/quiltt-sdks/commit/b09ad7c03a6e15e145a816ebe545acafff38e11e) Thanks [@sirwolfgang](https://github.com/sirwolfgang)! -
+
 ## 6.1.2
 
 ## 6.1.1
