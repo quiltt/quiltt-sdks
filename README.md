@@ -116,7 +116,7 @@ pnpm run dev
 
 ### Testing
 
-This project uses Vitest for JavaScript unit testing, Playwright for web E2E testing, Detox for React Native E2E testing, and platform-native toolchains for mobile packages.
+This project uses Vitest for JavaScript unit testing, Playwright for web E2E testing, Maestro for React Native E2E testing, and platform-native toolchains for mobile packages.
 
 #### Running Tests
 
@@ -148,7 +148,7 @@ swift test
 
 - **Unit Tests (JS/TS)**: Located in `packages/<name>/tests/` with `.test.ts/.tsx` extensions
 - **Web E2E Tests**: Playwright tests in `examples/react-nextjs/e2e/`, `examples/vue-nuxt/e2e/`, `examples/capacitor-react/e2e/`, and `examples/capacitor-vue/e2e/`
-- **Mobile E2E Tests**: Detox smoke tests in `examples/react-native-expo/e2e/`; Maestro connector flows in `examples/react-native-expo/maestro/`
+- **Mobile E2E Tests**: Maestro connector + OAuth callback flows in `examples/react-native-expo/maestro/` (run on both Android and iOS)
 - **Android Tests**: JUnit tests in `packages/android/connector/src/test/`
 - **Flutter Tests**: Dart tests in `packages/flutter/test/`
 - **iOS Tests**: Swift tests in `packages/ios/Tests/`
@@ -158,8 +158,7 @@ swift test
 
 - **Vitest**: Fast unit test runner with native TypeScript support
 - **Playwright**: Component and end-to-end testing for web examples
-- **Detox**: End-to-end smoke testing for React Native example apps
-- **Maestro**: Connector flow and OAuth callback testing for React Native on Android and iOS
+- **Maestro**: Black-box connector flow and OAuth callback E2E testing for React Native on Android and iOS
 - **Testing Library**: React and React Native testing utilities
 - **Happy DOM**: Lightweight DOM implementation for faster tests
 - **Gradle / JUnit**: Android unit and instrumentation testing

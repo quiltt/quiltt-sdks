@@ -6,7 +6,7 @@ This repository uses layered testing across packages and examples:
 
 - Unit tests for JS/TS package behavior
 - Web end-to-end tests for React/Vue/Capacitor examples
-- React Native end-to-end tests (Detox and Maestro)
+- React Native end-to-end tests (Maestro)
 - Native platform integration tests for Android, Flutter, and iOS SDKs
 
 The goal is to validate connector lifecycle behavior across all supported SDK surfaces.
@@ -29,7 +29,6 @@ Web examples:
 
 React Native example:
 
-- Detox specs: `examples/react-native-expo/e2e`
 - Maestro flows: `examples/react-native-expo/maestro`
 
 Native SDK integration:
@@ -66,10 +65,8 @@ React Native example:
 
 ```bash
 cd examples/react-native-expo
-pnpm run test:ios:build
-pnpm run test:ios:run:ci
-pnpm run test:android:build
-pnpm run test:android:run:ci
+pnpm run build:ios          # build Debug iOS app (macOS + Xcode)
+pnpm run build:android      # build Debug Android app
 maestro test maestro/connector-flow.yaml
 maestro test maestro/oauth-callback-flow.yaml
 ```
@@ -121,5 +118,5 @@ When secrets are not present, tests should prefer explicit skip behavior rather 
 1. Confirm build artifacts exist at expected output paths.
 2. Confirm emulator/simulator is booted and target device is explicit.
 3. Confirm Metro is running and reachable (including `adb reverse` for Android).
-4. Check uploaded artifacts (`playwright-report`, Detox logs, Maestro debug output).
+4. Check uploaded artifacts (`playwright-report`, Maestro debug output).
 5. Verify selectors against current hierarchy snapshots before changing test logic.

@@ -13,6 +13,6 @@ toolchain commands. Load it before editing any code.
 - **Mobile SDKs**: `android` (Kotlin), `flutter` (Dart), `ios` (Swift)
 - **Package manager**: pnpm (never switch)
 - **Lint/format**: Biome (not ESLint/Prettier)
-- **Test**: Vitest (JS unit), Playwright (web E2E), Detox (native E2E)
+- **Test**: Vitest (JS unit), Playwright (web E2E), Maestro (native E2E)
 - **Bundler**: Bunchee (not tsup/rollup/webpack)
 - **Releases**: Changesets — all packages version together
