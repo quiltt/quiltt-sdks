@@ -75,7 +75,7 @@ publishing {
         register<MavenPublication>("connector") {
             groupId = "io.quiltt"
             artifactId = "connector"
-            version = "6.1.2"
+            version = "6.1.3"
 
             pom {
                 name.set("Quiltt Connector")
