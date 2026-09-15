@@ -78,6 +78,28 @@ describe('Configuration Constants', () => {
     })
   })
 
+  describe('Private host layout override', () => {
+    it('keeps the public `{service}.{domain}` layout when unset', async () => {
+      const config = await loadConfig({ QUILTT_API_DOMAIN: 'pr-11574.r.quiltt.dev' })
+
+      expect(config.cdnBase).toBe('https://cdn.pr-11574.r.quiltt.dev')
+      expect(config.endpointGraphQL).toBe('https://api.pr-11574.r.quiltt.dev/v1/graphql')
+    })
+
+    it('composes service hosts with the override separator', async () => {
+      const config = await loadConfig({
+        QUILTT_API_DOMAIN: 'pr-11574.r.quiltt.dev',
+        QUILTT_INTERNAL_HOST_SEPARATOR: '-',
+      })
+
+      expect(config.cdnBase).toBe('https://cdn-pr-11574.r.quiltt.dev')
+      expect(config.endpointAuth).toBe('https://auth-pr-11574.r.quiltt.dev/v1/users/session')
+      expect(config.endpointGraphQL).toBe('https://api-pr-11574.r.quiltt.dev/v1/graphql')
+      expect(config.endpointRest).toBe('https://api-pr-11574.r.quiltt.dev/v1')
+      expect(config.endpointWebsockets).toBe('wss://api-pr-11574.r.quiltt.dev/websockets')
+    })
+  })
+
   describe('Protocols', () => {
     describe.each([
       ['true', 'http', 'ws'],
