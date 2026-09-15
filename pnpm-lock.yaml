@@ -38,7 +38,7 @@ overrides:
   ws@<=8.21.1: 8.21.1
   yargs@<18.0.0: ^18.1.0
   yargs@>18.0.0 <=18.1.0: ^18.1.0
-  zod@3: 4.5.0
+  zod@3: 4.6.0
   es-module-lexer@2: 3.0.2
 
 importers:
@@ -8928,11 +8928,11 @@ packages:
     resolution: {integrity: sha512-zK7YHHz4ZXpW89AHXUPbQVGKI7uvkd3hzusTdotCg1UxyaVtg0zFJSTfW/Dq5f7OBBVnq6cZIaC8Ti4hb6dtCA==}
     engines: {node: '>= 14'}
 
-  zod@4.5.0:
-    resolution: {integrity: sha512-FSVkRSv3SBc0aefry5kxuD46ExRwtWWyUPjyXHZt00YRF81+MX8rdQm8aJwlL4NLMqcJABseHr66OJuc+0LkDw==}
+  zod@4.6.0:
+    resolution: {integrity: sha512-iIvwyDnebKYpww2ta0DjaNOL8RnVLmPMhgWyOzlW9y0EIIxv5gl+H6Y0ONpt83HqjGqkk78uWp6xWtpxzZdPbw==}
 
-  zod@4.5.4:
-    resolution: {integrity: sha512-sC95tT5iHHH9gtpj6A81kh+NEaRAUFN+qlUPDUbRfOMvNf5QCBqsb3WgvnpVtK5Y+4UfA6KqufotuTvMGiTlsA==}
+  zod@4.6.2:
+    resolution: {integrity: sha512-lh5RCAGFa1Cm2hjtNwLQhSs/AsqdWnTQaBER9fEwN/88pSh7KOtJavtBx/0VlkN/uFd61SwYmljLMDAsHlvzBQ==}
 
 snapshots:
 
@@ -9810,10 +9810,10 @@ snapshots:
 
   '@devframes/json-render@0.7.16(@devframes/hub@0.7.16(devframe@0.7.16(srvx@0.12.0)(typescript@6.0.3)))(devframe@0.7.16(srvx@0.12.0)(typescript@6.0.3))':
     dependencies:
-      '@json-render/core': 0.19.0(zod@4.5.4)
+      '@json-render/core': 0.19.0(zod@4.6.2)
       devframe: 0.7.16(srvx@0.12.0)(typescript@6.0.3)
       nostics: 1.2.0
-      zod: 4.5.4
+      zod: 4.6.2
     optionalDependencies:
       '@devframes/hub': 0.7.16(devframe@0.7.16(srvx@0.12.0)(typescript@6.0.3))
 
@@ -10086,7 +10086,7 @@ snapshots:
       toqr: 0.1.1
       wrap-ansi: 7.0.0
       ws: 8.21.1
-      zod: 4.5.0
+      zod: 4.6.0
     optionalDependencies:
       expo-router: 57.0.20(ffa08604526dbee7e978a57791537739)
       react-native: 0.86.3(@babel/core@7.29.7(supports-color@10.2.2))(@react-native/metro-config@0.86.3(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@types/react@19.2.18)(react@19.2.3)(supports-color@10.2.2)
@@ -10852,9 +10852,9 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@json-render/core@0.19.0(zod@4.5.4)':
+  '@json-render/core@0.19.0(zod@4.6.2)':
     dependencies:
-      zod: 4.5.4
+      zod: 4.6.2
 
   '@kwsites/file-exists@1.1.1(supports-color@10.2.2)':
     dependencies:
@@ -18454,6 +18454,6 @@ snapshots:
       compress-commons: 6.0.2
       readable-stream: 4.7.0
 
-  zod@4.5.0: {}
+  zod@4.6.0: {}
 
-  zod@4.5.4: {}
+  zod@4.6.2: {}
