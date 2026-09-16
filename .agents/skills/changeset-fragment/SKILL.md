@@ -10,6 +10,11 @@ use the standard [Changesets CLI](https://github.com/changesets/changesets)
 with a fixed versioning group — all 8 packages (`core`, `react`, `vue`,
 `react-native`, `capacitor`, `android`, `flutter`, `ios`) version together.
 
+All 8 always land on the same version, so a release can never ship them
+partially. Which packages you list in the front matter does not change that —
+but it does decide whose `CHANGELOG.md` records the change, which is why the
+selection still matters. See [Package Selection](#package-selection).
+
 ---
 
 ## Location
@@ -24,15 +29,19 @@ This starts an interactive prompt to select the bump type and write the
 summary. The generated file is named by Changesets (a random slug like
 `twelve-kiwis-film.md`). Commit the file alongside your code changes.
 
-**Do not hand-create a `.changeset/*.md` file** — always run `pnpm changeset`
-and fill in the summary at the interactive prompt.
+**Prefer `pnpm changeset`** and fill in the summary at the interactive prompt.
+It generates the front matter and the filename for you.
+
+When the prompt is not available (an agent, a script, CI), hand-write the file
+instead, matching what the CLI produces: a random-slug filename, quoted package
+names, and one bump type per package.
 
 ---
 
 ## Bump Types
 
-All 8 packages version together (fixed group), so you only need to select
-**one** affected package. The selected bump type applies to all:
+All 8 packages version together (fixed group), so one bump type applies to
+every package:
 
 | Type | When | Example |
 |------|------|---------|
@@ -44,7 +53,10 @@ All 8 packages version together (fixed group), so you only need to select
 
 ## Front Matter
 
-Changesets auto-generates the YAML front matter. Never edit it manually.
+`pnpm changeset` generates the YAML front matter for you — leave it as generated.
+When hand-writing a fragment, copy its shape exactly: quoted package names, one
+bump type each.
+
 The front matter looks like:
 
 ```yaml
@@ -53,14 +65,70 @@ The front matter looks like:
 ---
 ```
 
-Select **any one** package — the fixed group bumps all 8 regardless.
+---
+
+## Package Selection
+
+List **every package whose behaviour changed** — not every package that will be
+released. The two are different:
+
+- The fixed group versions all 8 packages whatever you list.
+- Only the packages you list get the summary in their `CHANGELOG.md`. A package
+  that bumps without being listed records just an `Updated dependencies` entry.
+
+So listing too few packages silently loses changelog coverage, and listing too
+many writes a summary into a package that did not change — misleading for
+anyone reading that package's history.
+
+A change confined to one package is one line:
+
+```yaml
+---
+"@quiltt/core": patch
+---
+```
+
+A change to the shared React and Vue session logic is two:
+
+```yaml
+---
+"@quiltt/react": patch
+"@quiltt/vue": patch
+---
+```
+
+---
+
+## Preventing Version Drift
+
+The fixed group is a hand-maintained list in `.changeset/config.json`. A package
+under `packages/` that is missing from that list versions on its own — the one
+way these packages can drift apart.
+
+- **Adding a package?** Add it to `fixed` in the same PR, and to the package
+  list at the top of this skill.
+- **Verify locally:**
+
+  ```bash
+  pnpm check:version-drift
+  ```
+
+  This asserts that every package under `packages/` sits in one `fixed` group,
+  that no `fixed` entry is stale, and that every released package shares a
+  version.
+- **CI enforces it.** `check-version-drift.yml` runs the same check whenever
+  `.changeset/config.json` or a package manifest changes, so a package added
+  without updating the group fails the build rather than drifting silently.
+
+The example packages (`@quiltt/examples-*`) are excluded via `ignore` and are
+expected to stay on their own version.
 
 ---
 
 ## Writing the Summary
 
 The summary is the body text below the front matter. It becomes the changelog
-entry in each package's `CHANGELOG.md`.
+entry in each listed package's `CHANGELOG.md`.
 
 ### Audience
 
@@ -133,8 +201,8 @@ into the release changelog.
 
 1. Make code changes on a feature branch
 2. Run `pnpm changeset`
-3. Select any one package (e.g. `@quiltt/core`) — all 8 will bump together
-4. Choose the bump type (`patch` / `minor` / `major`)
+3. Select every package whose behaviour changed
+4. Choose the bump type (`patch` / `minor` / `major`) — it applies to all 8
 5. Write the summary following the style guide above
 6. Commit the generated `.changeset/*.md` file with your code changes
 7. Push and open a PR

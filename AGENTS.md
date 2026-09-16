@@ -282,7 +282,9 @@ Load `changeset-fragment` skill when creating or editing a changeset.
 pnpm changeset     # Interactive prompt to create a changeset
 ```
 
-- All 8 packages version together (fixed group in `.changeset/config.json`)
+- All 8 packages version together (fixed group in `.changeset/config.json`), so they can never release partially
+- A package added under `packages/` must be added to that `fixed` list in the same PR, or it versions on its own
+- List every package whose behaviour changed — those are the ones whose `CHANGELOG.md` records the change
 - Types: `major` (breaking), `minor` (new features), `patch` (bug fixes)
 
 ### Key Reference Files

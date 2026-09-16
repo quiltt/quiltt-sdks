@@ -23,27 +23,9 @@
 import { computed, defineComponent, h, onMounted, onUnmounted, type PropType, ref } from 'vue'
 
 import type { ConnectorSDKCallbackMetadata } from '@quiltt/vue'
-import { ConnectorSDKEventType, useQuilttSession } from '@quiltt/vue'
+import { ConnectorSDKEventType, isTrustedQuilttUrl, useQuilttSession } from '@quiltt/vue'
 
 import { QuilttConnector as QuilttConnectorPlugin } from '../../plugin'
-
-const trustedQuilttHostSuffixes = ['quiltt.io', 'quiltt.dev', 'quiltt.app']
-
-const isTrustedQuilttOrigin = (origin: string): boolean => {
-  try {
-    const originUrl = new URL(origin)
-    if (originUrl.protocol !== 'https:') {
-      return false
-    }
-
-    const hostname = originUrl.hostname.toLowerCase()
-    return trustedQuilttHostSuffixes.some(
-      (suffix) => hostname === suffix || hostname.endsWith(`.${suffix}`)
-    )
-  } catch {
-    return false
-  }
-}
 
 const decodeIfEncoded = (value: string): string => {
   try {
@@ -55,6 +37,13 @@ const decodeIfEncoded = (value: string): string => {
 }
 
 const normalizeUrlValue = (value: string): string => decodeIfEncoded(value.trim())
+
+/**
+ * Shown when `connectorId` does not resolve to a Quiltt host. The ID is
+ * interpolated into the connector host, so an unusable one is a configuration
+ * error rather than something a retry can fix.
+ */
+const INVALID_CONNECTOR_ID_MESSAGE = 'Invalid connector ID. Unable to load the Quiltt Connector.'
 
 export const QuilttConnector = defineComponent({
   name: 'QuilttConnector',
@@ -131,11 +120,22 @@ export const QuilttConnector = defineComponent({
     let loadTimeoutId: ReturnType<typeof setTimeout> | null = null
     let deepLinkListenerPromise: Promise<{ remove: () => void }> | null = null
 
-    // Connector origin for secure postMessage targeting
-    const connectorOrigin = computed(() => `https://${props.connectorId}.quiltt.app`)
+    // Connector origin for secure postMessage targeting.
+    //
+    // `connectorId` is interpolated into the host, so a `/` or `?` in it would
+    // retarget everything built from this — the iframe, the preflight fetch, and
+    // the postMessage target — and the URL carries the session token. An ID that
+    // does not resolve to a Quiltt host is refused rather than loaded.
+    const connectorOrigin = computed(() => {
+      const origin = `https://${props.connectorId}.quiltt.app`
+
+      return isTrustedQuilttUrl(origin) ? origin : null
+    })
 
     // Build connector URL
     const connectorUrl = computed(() => {
+      if (!connectorOrigin.value) return null
+
       const url = new URL(connectorOrigin.value)
 
       if (session.value?.token) {
@@ -165,7 +165,9 @@ export const QuilttConnector = defineComponent({
     })
 
     const postOAuthCallbackToIframe = (callbackUrl: string) => {
-      if (!iframeRef.value?.contentWindow) {
+      const targetOrigin = connectorOrigin.value
+
+      if (!targetOrigin || !iframeRef.value?.contentWindow) {
         return
       }
 
@@ -187,7 +189,7 @@ export const QuilttConnector = defineComponent({
               params,
             },
           },
-          connectorOrigin.value
+          targetOrigin
         )
       } catch {
         iframeRef.value.contentWindow.postMessage(
@@ -199,7 +201,7 @@ export const QuilttConnector = defineComponent({
               params: {},
             },
           },
-          connectorOrigin.value
+          targetOrigin
         )
       }
     }
@@ -207,7 +209,7 @@ export const QuilttConnector = defineComponent({
     // Handle messages from the iframe
     const handleMessage = (event: MessageEvent) => {
       // Validate origin
-      if (!isTrustedQuilttOrigin(event.origin)) {
+      if (!isTrustedQuilttUrl(event.origin)) {
         return
       }
 
@@ -265,9 +267,16 @@ export const QuilttConnector = defineComponent({
       isLoaded.value = false
       loadError.value = null
 
+      const target = connectorUrl.value
+
+      if (!target) {
+        loadError.value = INVALID_CONNECTOR_ID_MESSAGE
+        return
+      }
+
       abortController = new AbortController()
 
-      fetch(connectorUrl.value, {
+      fetch(target, {
         method: 'GET',
         mode: 'no-cors',
         credentials: 'omit',
@@ -366,13 +375,15 @@ export const QuilttConnector = defineComponent({
           style: wrapperStyle,
         },
         [
-          h('iframe', {
-            ref: iframeRef,
-            src: connectorUrl.value,
-            title: 'Quiltt Connector',
-            allow: 'publickey-credentials-get *',
-            style: iframeStyle,
-          }),
+          connectorUrl.value
+            ? h('iframe', {
+                ref: iframeRef,
+                src: connectorUrl.value,
+                title: 'Quiltt Connector',
+                allow: 'publickey-credentials-get *',
+                style: iframeStyle,
+              })
+            : null,
           loadError.value ? h('div', { style: errorStyle }, loadError.value) : null,
         ]
       )

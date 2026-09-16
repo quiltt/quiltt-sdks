@@ -288,6 +288,18 @@ describe('QuilttConnector', () => {
       ) // Increased timeout to account for retries
     })
 
+    it('should render ErrorScreen for a connector ID that does not resolve to a Quiltt host', async () => {
+      const { getByTestId } = render(<QuilttConnector {...defaultProps} connectorId="evil.com/x" />)
+
+      await waitFor(() => {
+        expect(getByTestId('error-screen')).toBeTruthy()
+        expect(() => getByTestId('loading-screen')).toThrow()
+      })
+
+      // The WebView must never be pointed at the unvalidated host.
+      expect(capturedWebViewProps).toBeNull()
+    })
+
     it('should render webview if pre-flight check succeeds', async () => {
       // Mock successful fetch response
       fetchSpy.mockResolvedValueOnce(createMockResponse(200, { ok: true }))

@@ -13,6 +13,7 @@
     "changeset": "npx changeset",
     "check:deprecations": "node scripts/check-deprecations.mjs",
     "check:packages": "pnpm check-dependency-version-consistency .",
+    "check:version-drift": "node scripts/check-version-drift.mjs",
     "clean": "turbo run clean",
     "dev": "turbo run dev --parallel",
     "lint": "turbo run lint",

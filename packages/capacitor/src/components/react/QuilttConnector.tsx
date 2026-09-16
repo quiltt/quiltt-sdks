@@ -9,7 +9,7 @@ import {
 } from 'react'
 
 import type { ConnectorSDKCallbackMetadata, ConnectorSDKCallbacks } from '@quiltt/react'
-import { ConnectorSDKEventType, useQuilttSession } from '@quiltt/react'
+import { ConnectorSDKEventType, isTrustedQuilttUrl, useQuilttSession } from '@quiltt/react'
 
 import { QuilttConnector as QuilttConnectorPlugin } from '../../plugin'
 
@@ -37,24 +37,6 @@ type QuilttConnectorProps = {
   className?: string
 } & ConnectorSDKCallbacks
 
-const trustedQuilttHostSuffixes = ['quiltt.io', 'quiltt.dev', 'quiltt.app']
-
-const isTrustedQuilttOrigin = (origin: string): boolean => {
-  try {
-    const originUrl = new URL(origin)
-    if (originUrl.protocol !== 'https:') {
-      return false
-    }
-
-    const hostname = originUrl.hostname.toLowerCase()
-    return trustedQuilttHostSuffixes.some(
-      (suffix) => hostname === suffix || hostname.endsWith(`.${suffix}`)
-    )
-  } catch {
-    return false
-  }
-}
-
 const decodeIfEncoded = (value: string): string => {
   try {
     const decoded = decodeURIComponent(value)
@@ -65,6 +47,13 @@ const decodeIfEncoded = (value: string): string => {
 }
 
 const normalizeUrlValue = (value: string): string => decodeIfEncoded(value.trim())
+
+/**
+ * Shown when `connectorId` does not resolve to a Quiltt host. The ID is
+ * interpolated into the connector host, so an unusable one is a configuration
+ * error rather than something a retry can fix.
+ */
+const INVALID_CONNECTOR_ID_MESSAGE = 'Invalid connector ID. Unable to load the Quiltt Connector.'
 
 /**
  * QuilttConnector component for Capacitor apps
@@ -94,11 +83,22 @@ export const QuilttConnector = forwardRef<QuilttConnectorHandle, QuilttConnector
     const [isLoaded, setIsLoaded] = useState(false)
     const [loadError, setLoadError] = useState<string | null>(null)
 
-    // Connector origin for secure postMessage targeting
-    const connectorOrigin = useMemo(() => `https://${connectorId}.quiltt.app`, [connectorId])
+    // Connector origin for secure postMessage targeting.
+    //
+    // `connectorId` is interpolated into the host, so a `/` or `?` in it would
+    // retarget everything built from this — the iframe, the preflight fetch, and
+    // the postMessage target — and the URL carries the session token. An ID that
+    // does not resolve to a Quiltt host is refused rather than loaded.
+    const connectorOrigin = useMemo(() => {
+      const origin = `https://${connectorId}.quiltt.app`
+
+      return isTrustedQuilttUrl(origin) ? origin : null
+    }, [connectorId])
 
     // Build connector URL
     const connectorUrl = useMemo(() => {
+      if (!connectorOrigin) return null
+
       const url = new URL(connectorOrigin)
 
       if (session?.token) {
@@ -131,11 +131,18 @@ export const QuilttConnector = forwardRef<QuilttConnectorHandle, QuilttConnector
       setIsLoaded(false)
       setLoadError(null)
 
+      const target = connectorUrl
+
+      if (!target) {
+        setLoadError(INVALID_CONNECTOR_ID_MESSAGE)
+        return
+      }
+
       const abortController = new AbortController()
 
       const runPreflight = async () => {
         try {
-          await fetch(connectorUrl, {
+          await fetch(target, {
             method: 'GET',
             mode: 'no-cors',
             credentials: 'omit',
@@ -169,7 +176,9 @@ export const QuilttConnector = forwardRef<QuilttConnectorHandle, QuilttConnector
 
     const postOAuthCallbackToIframe = useCallback(
       (callbackUrl: string) => {
-        if (!iframeRef.current?.contentWindow) {
+        const targetOrigin = connectorOrigin
+
+        if (!targetOrigin || !iframeRef.current?.contentWindow) {
           return
         }
 
@@ -191,7 +200,7 @@ export const QuilttConnector = forwardRef<QuilttConnectorHandle, QuilttConnector
                 params,
               },
             },
-            connectorOrigin
+            targetOrigin
           )
         } catch {
           iframeRef.current.contentWindow.postMessage(
@@ -203,7 +212,7 @@ export const QuilttConnector = forwardRef<QuilttConnectorHandle, QuilttConnector
                 params: {},
               },
             },
-            connectorOrigin
+            targetOrigin
           )
         }
       },
@@ -215,7 +224,7 @@ export const QuilttConnector = forwardRef<QuilttConnectorHandle, QuilttConnector
     const handleMessage = useCallback(
       (event: MessageEvent) => {
         // Validate origin
-        if (!isTrustedQuilttOrigin(event.origin)) {
+        if (!isTrustedQuilttUrl(event.origin)) {
           return
         }
 
@@ -321,20 +330,22 @@ export const QuilttConnector = forwardRef<QuilttConnectorHandle, QuilttConnector
           ...style,
         }}
       >
-        <iframe
-          ref={iframeRef}
-          src={connectorUrl}
-          title="Quiltt Connector"
-          allow="publickey-credentials-get *"
-          style={{
-            border: 'none',
-            width: '100%',
-            height: '100%',
-          }}
-          onError={() => {
-            setLoadError('Unable to load Quiltt Connector iframe.')
-          }}
-        />
+        {connectorUrl ? (
+          <iframe
+            ref={iframeRef}
+            src={connectorUrl}
+            title="Quiltt Connector"
+            allow="publickey-credentials-get *"
+            style={{
+              border: 'none',
+              width: '100%',
+              height: '100%',
+            }}
+            onError={() => {
+              setLoadError('Unable to load Quiltt Connector iframe.')
+            }}
+          />
+        ) : null}
 
         {loadError ? (
           <div

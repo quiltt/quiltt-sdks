@@ -51,7 +51,7 @@ Create a changeset whenever you make changes that should be included in the next
 - Documentation updates affecting the package API
 - Dependency updates that affect consumers
 
-A single changeset bumps all packages together due to the fixed versioning group. You only need to select one affected package — the version bump applies to all.
+A single changeset bumps all packages together due to the fixed versioning group. List **every package whose behaviour changed**: the fixed group applies the version bump to all 8 either way, but only the listed packages get the summary in their `CHANGELOG.md`.
 
 ### How to Create a Changeset
 
@@ -64,7 +64,7 @@ A single changeset bumps all packages together due to the fixed versioning group
    ```
 
 3. Follow the interactive prompts:
-   - **Select packages**: Choose any one of the affected packages (the fixed group means all will be bumped)
+   - **Select packages**: Choose every package whose behaviour changed (the fixed group gives all 8 the same version regardless)
    - **Select bump type**: Choose the appropriate semantic version bump:
      - **patch**: Bug fixes and minor updates (1.0.0 → 1.0.1)
      - **minor**: New features, backwards-compatible (1.0.0 → 1.1.0)
