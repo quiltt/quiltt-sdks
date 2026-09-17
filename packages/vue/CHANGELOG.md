@@ -1,5 +1,12 @@
 # @quiltt/vue
 
+## 6.1.4
+
+### Patch Changes
+
+- Updated dependencies [[`e7732ff`](https://github.com/quiltt/quiltt-sdks/commit/e7732ff15ffef69dd3c81dd5e1167f9e151ddb5b)]:
+  - @quiltt/core@6.1.4
+
 ## 6.1.3
 
 ### Patch Changes
