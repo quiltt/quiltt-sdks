@@ -10,6 +10,7 @@ allowBuilds:
   esbuild: true
   sharp: true
 overrides:
+  '@react-native/codegen>yargs': 17.7.2
   '@turbo/darwin-64@<=2.9.18': 2.9.18
   '@turbo/linux-64@<=2.9.18': 2.9.18
   '@turbo/windows-64@<=2.9.18': 2.9.18
@@ -21,6 +22,7 @@ overrides:
   'brace-expansion@<=2.1.3': ^2.1.3
   'brace-expansion@>4.0.0 <5.0.9': ^5.0.9
   'browserslist@<=4.28.6': 4.28.7
+  'es-module-lexer@2': 3.0.2
   'fast-uri@<=3.1.5': 3.1.6
   'h3@<=1.15.8': ^1.15.9
   'iltorb': npm:noop2@^2.0.0
@@ -29,6 +31,7 @@ overrides:
   'nanoid@<=5.1.16': 5.1.16
   'node-forge@<=1.4.0': ^1.4.0
   'query-string@7.1.3': 9.5.0
+  'react-native>yargs': 17.7.2
   'read-yaml-file>js-yaml': '>=3.15.2 <4'
   'serialize-javascript@<=7.0.5': ^7.0.5
   'sharp@<=0.35.3': 0.35.4
@@ -39,17 +42,13 @@ overrides:
   'uuid@<=11.1.1': 11.1.1
   'vite@<=7.3.2': ^7.3.2 || ^8.0.7
   'ws@<=8.21.1': 8.21.1
-  'yargs@<18.0.0': ^18.1.0
+  # yargs 18 is ESM-only (no CJS entry) and dropped the v17 chained API.
+  # The CJS consumers below declare `^17` and call `require('yargs').usage()`
+  # / `.option()`, so force-majoring them to 18 breaks the build with
+  # "TypeError: yargs.usage is not a function" (e.g. the RN Android
+  # `generateCodegenSchemaFromJavaScript` tasks). Keep pre-18 consumers on the
+  # latest 17.x instead of crossing the major. Affected: @react-native/codegen,
+  # react-native, metro, jest-cli, bunchee.
+  'yargs@<18.0.0': ^17.7.2
   'yargs@>18.0.0 <=18.1.0': ^18.1.0
   'zod@3': 4.6.0
-  'es-module-lexer@2': 3.0.2
-minimumReleaseAgeExclude:
-  - '@expo/cli@57.0.23'
-  - '@expo/metro-file-map@57.0.3'
-  - '@expo/ui@57.0.17'
-  - babel-preset-expo@57.0.11
-  - expo-glass-effect@57.0.2
-  - expo-modules-core@57.0.17
-  - expo-modules-jsi@57.1.0
-  - expo-router@57.0.20
-  - expo@57.0.21
