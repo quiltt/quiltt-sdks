@@ -6,7 +6,7 @@ on:
     paths:
       - ".changeset/config.json"
       - "packages/*/package.json"
-      - "scripts/check-version-drift.mjs"
+      - "scripts/check-version-drift.ts"
       - ".github/actions/check-version-drift/**"
       - ".github/workflows/check-version-drift.yml"
 

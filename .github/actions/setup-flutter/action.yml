@@ -5,7 +5,7 @@ inputs:
   flutter-version:
     description: "Flutter version to install"
     required: false
-    default: '3.41.4'
+    default: '3.41.6'
 
 runs:
   using: composite

@@ -2,7 +2,5 @@
   "name": "@quiltt/ios",
   "version": "6.1.3",
   "private": true,
-  "scripts": {
-    "lint": "swiftlint"
-  }
+  "scripts": {}
 }

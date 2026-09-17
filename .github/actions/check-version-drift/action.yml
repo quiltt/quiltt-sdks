@@ -13,4 +13,4 @@ runs:
     - name: Check that every package shares one fixed version group
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-      run: node scripts/check-version-drift.mjs
+      run: node scripts/check-version-drift.ts

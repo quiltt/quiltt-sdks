@@ -10,6 +10,7 @@ gem 'excon', '>= 1.5.0'
 
 gem 'json', '>= 2.21.2'
 
+gem 'cocoapods', '~> 1.17.0'
 gem 'rubyzip', '>= 3.4.0'
 
 gem 'bigdecimal', '>= 4.1.3'

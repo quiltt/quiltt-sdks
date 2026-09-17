@@ -3,10 +3,10 @@
  * Issue a Quiltt session token for local integration testing.
  *
  * Usage:
- *   QUILTT_API_KEY_SECRET=qltt_... node scripts/issue-token.mjs
+ *   QUILTT_API_KEY_SECRET=qltt_... node scripts/issue-token.ts
  *
  * Or source a .env.local file first:
- *   export $(grep -v '^#' .env.local | xargs) && node scripts/issue-token.mjs
+ *   export $(grep -v '^#' .env.local | xargs) && node scripts/issue-token.ts
  */
 
 const apiKey = process.env.QUILTT_API_KEY_SECRET
@@ -33,7 +33,7 @@ if (!response.ok) {
   process.exit(1)
 }
 
-const { token } = await response.json()
+const { token } = (await response.json()) as { token?: string }
 
 if (!token) {
   console.error('Error: No token in response')
