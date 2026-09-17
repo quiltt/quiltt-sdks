@@ -3,7 +3,8 @@
   "tasks": {
     "build": {
       "dependsOn": ["prebuild", "^build"],
-      "outputs": ["dist/**", ".next/**", "ios/**", "android/**"]
+      "outputs": ["dist/**", ".next/**", "ios/**", "android/**"],
+      "env": ["NEXT_PUBLIC_*", "NUXT_PUBLIC_*", "VITE_*"]
     },
     "clean": {
       "cache": false,

@@ -1,0 +1,28 @@
+# mise tool versions — mirrors CI pins and local version files
+
+# Sources: .nvmrc, .ruby-version, package.json#packageManager, AGENTS.md
+
+# .github/actions/setup-flutter/action.yml, .github/workflows/*.yml
+
+# Consistency enforced by scripts/check-tool-versions.mjs (`pnpm check:tool-versions`)
+
+node     24.14.0
+pnpm     12.4.2
+ruby     3.4.7
+java     temurin-21
+flutter  3.41.6
+swiftlint 0.65.1
+
+# ── Not managed by mise/.tool_versions (managed elsewhere) ──────────────────────────────
+
+# Dart 3.11.4      — bundled with Flutter 3.41.6 (do not pin separately)
+
+# Xcode 16.2       — pinned in CI; install via Xcodes/App Store, not mise
+
+# Swift 5.9        — from Package.swift `swift-tools-version`; tied to Xcode
+
+# CocoaPods 1.17.0 — pinned in Gemfile (`~> 1.17.0`); Podfile.lock files converge on next `pod install`
+
+# Gradle           — use each project's `./gradlew`; the wrapper is authoritative (Android 8.12.1, Flutter example 8.14)
+
+# Maestro 2.10.0   — pinned via MAESTRO_VERSION in tests-integration-react-native.yml
