@@ -38,6 +38,7 @@ vi.mock('@quiltt/vue', async (importOriginal) => {
 import { QuilttConnector } from '../../src/components/vue/QuilttConnector'
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.clearAllMocks()
   vi.unstubAllGlobals()
 })
@@ -168,6 +169,167 @@ describe('QuilttConnector (capacitor vue)', () => {
 
     expect(pluginMocks.addListener).toHaveBeenCalledWith('deepLink', expect.any(Function))
     expect(pluginMocks.getAppLauncherUrl).toHaveBeenCalled()
+  })
+
+  it('sends OAuth callbacks to the iframe and parses params', async () => {
+    let deepLinkListener: ((event: { url: string }) => void) | undefined
+
+    pluginMocks.addListener.mockImplementation((_event, listener) => {
+      deepLinkListener = listener
+      return Promise.resolve({ remove: vi.fn() })
+    })
+    pluginMocks.getAppLauncherUrl.mockResolvedValue({ url: 'not-a-valid-url' })
+
+    const wrapper = mount(QuilttConnector, {
+      props: { connectorId: 'connector_test' },
+    })
+
+    const iframe = wrapper.find('iframe').element as HTMLIFrameElement
+    const postMessageSpy = vi.fn()
+    Object.defineProperty(iframe, 'contentWindow', {
+      value: { postMessage: postMessageSpy },
+      configurable: true,
+    })
+
+    deepLinkListener?.({ url: 'https://example.com/oauth?code=abc&state=xyz' })
+    expect(postMessageSpy).toHaveBeenCalledWith(
+      {
+        source: 'quiltt',
+        type: 'OAuthCallback',
+        data: {
+          url: 'https://example.com/oauth?code=abc&state=xyz',
+          params: { code: 'abc', state: 'xyz' },
+        },
+      },
+      'https://connector_test.quiltt.app'
+    )
+
+    const handleOAuthCallback = (
+      wrapper.vm as unknown as { handleOAuthCallback: (url: string) => void }
+    ).handleOAuthCallback
+    handleOAuthCallback('https://example.com/manual?token=123')
+    expect(postMessageSpy).toHaveBeenCalledWith(
+      {
+        source: 'quiltt',
+        type: 'OAuthCallback',
+        data: {
+          url: 'https://example.com/manual?token=123',
+          params: { token: '123' },
+        },
+      },
+      'https://connector_test.quiltt.app'
+    )
+
+    // The app-launcher URL is fetched on mount; an unparseable one falls back
+    // to an empty params object.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(postMessageSpy).toHaveBeenCalledWith(
+      {
+        source: 'quiltt',
+        type: 'OAuthCallback',
+        data: {
+          url: 'not-a-valid-url',
+          params: {},
+        },
+      },
+      'https://connector_test.quiltt.app'
+    )
+  })
+
+  it('ignores messages from untrusted origins and malformed payloads', () => {
+    primePluginMocks()
+
+    const onEvent = vi.fn()
+    mount(QuilttConnector, {
+      props: { connectorId: 'connector_test', onEvent },
+    })
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        origin: 'https://evil.example.com',
+        data: { source: 'quiltt', type: 'Load' },
+      })
+    )
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        origin: 'https://connector_test.quiltt.app',
+        data: { source: 'not-quiltt', type: 'Load' },
+      })
+    )
+
+    expect(onEvent).not.toHaveBeenCalled()
+  })
+
+  it('routes trusted connector messages to lifecycle events with metadata', async () => {
+    primePluginMocks()
+
+    const wrapper = mount(QuilttConnector, {
+      props: { connectorId: 'connector_test' },
+    })
+
+    const dispatch = (type: string, extra = {}) =>
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          origin: 'https://connector_test.quiltt.app',
+          data: {
+            source: 'quiltt',
+            type,
+            profileId: 'profile_123',
+            connectionId: 'connection_123',
+            connectorSession: 'session_123',
+            ...extra,
+          },
+        })
+      )
+
+    const metadata = {
+      connectorId: 'connector_test',
+      profileId: 'profile_123',
+      connectionId: 'connection_123',
+      connectorSession: 'session_123',
+    }
+
+    dispatch('Load')
+    dispatch('ExitSuccess')
+    dispatch('ExitAbort')
+    dispatch('ExitError')
+    dispatch('Navigate', { url: 'https://bank.example.com' })
+
+    await nextTick()
+
+    expect(wrapper.emitted('event')).toEqual([
+      ['Load', metadata],
+      ['ExitSuccess', metadata],
+      ['ExitAbort', metadata],
+      ['ExitError', metadata],
+    ])
+    expect(wrapper.emitted('load')).toEqual([[metadata]])
+    expect(wrapper.emitted('exit')).toEqual([
+      ['ExitSuccess', metadata],
+      ['ExitAbort', metadata],
+      ['ExitError', metadata],
+    ])
+    expect(wrapper.emitted('exit-success')).toEqual([[metadata]])
+    expect(wrapper.emitted('exit-abort')).toEqual([[metadata]])
+    expect(wrapper.emitted('exit-error')).toEqual([[metadata]])
+
+    expect(pluginMocks.openUrl).toHaveBeenCalledWith({ url: 'https://bank.example.com' })
+  })
+
+  it('shows the load timeout error when the connector never loads', async () => {
+    primePluginMocks()
+
+    vi.useFakeTimers()
+
+    const wrapper = mount(QuilttConnector, {
+      props: { connectorId: 'connector_test' },
+    })
+
+    vi.advanceTimersByTime(15000)
+    await nextTick()
+
+    expect(wrapper.text()).toContain('Connector took too long to load. Please retry.')
   })
 
   it('removes deepLink listener on unmount', async () => {
