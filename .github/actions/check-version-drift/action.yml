@@ -1,0 +1,16 @@
+name: "Check Version Drift"
+description: "Fails when the changesets fixed versioning group no longer matches the packages that exist"
+
+inputs:
+  working-directory:
+    description: "Monorepo root directory"
+    required: false
+    default: "."
+
+runs:
+  using: "composite"
+  steps:
+    - name: Check that every package shares one fixed version group
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: node scripts/check-version-drift.mjs

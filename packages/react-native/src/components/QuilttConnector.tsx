@@ -10,7 +10,7 @@ import {
 import { Linking, Platform, StyleSheet } from 'react-native'
 
 import type { ConnectorSDKCallbackMetadata, ConnectorSDKCallbacks } from '@quiltt/react'
-import { ConnectorSDKEventType, useQuilttSession } from '@quiltt/react'
+import { ConnectorSDKEventType, isTrustedQuilttUrl, useQuilttSession } from '@quiltt/react'
 import { URL } from 'react-native-url-polyfill' // https://github.com/facebook/react-native/issues/16434
 import { WebView } from 'react-native-webview'
 import type { ShouldStartLoadRequest } from 'react-native-webview/lib/WebViewTypes'
@@ -30,7 +30,12 @@ import { ErrorScreen } from './ErrorScreen'
 import { LoadingScreen } from './LoadingScreen'
 
 const PREFLIGHT_RETRY_COUNT = 3
-
+/**
+ * Shown when `connectorId` does not resolve to a Quiltt host. The ID is
+ * interpolated into the connector host, so an unusable one is a configuration
+ * error rather than something a retry can fix.
+ */
+const INVALID_CONNECTOR_ID_MESSAGE = 'Invalid connector ID. Unable to load the Quiltt Connector.'
 export type PreFlightCheck = {
   checked: boolean
   error?: string
@@ -251,10 +256,21 @@ const QuilttConnector = forwardRef<QuilttConnectorHandle, QuilttConnectorProps>(
       return effectiveAppLauncherUrl.trim().length > 0
     }, [effectiveAppLauncherUrl])
 
-    const connectorUrl = useMemo(() => {
-      if (!sdkAgent) return null
+    // Connector origin for the WebView.
+    //
+    // `connectorId` is interpolated into the host, so a `/` or `?` in it would
+    // point the WebView — and the session token in its query string — somewhere
+    // else. An ID that does not resolve to a Quiltt host is refused.
+    const connectorOrigin = useMemo(() => {
+      const origin = `https://${connectorId}.quiltt.app`
 
-      const url = new URL(`https://${connectorId}.quiltt.app`)
+      return isTrustedQuilttUrl(origin) ? origin : null
+    }, [connectorId])
+
+    const connectorUrl = useMemo(() => {
+      if (!sdkAgent || !connectorOrigin) return null
+
+      const url = new URL(connectorOrigin)
 
       // For normal parameters, just append them directly
       url.searchParams.append('mode', 'webview')
@@ -277,7 +293,15 @@ const QuilttConnector = forwardRef<QuilttConnectorHandle, QuilttConnectorProps>(
       }
 
       return url.toString()
-    }, [connectorId, hasConfiguredAppLauncherUrl, safeAppLauncherUrl, sdkAgent, themeMode])
+    }, [connectorOrigin, hasConfiguredAppLauncherUrl, safeAppLauncherUrl, sdkAgent, themeMode])
+
+    // An unusable connector ID cannot be fixed by retrying, so report it rather
+    // than leaving the Connector on its loading screen.
+    useEffect(() => {
+      if (!connectorOrigin) {
+        setPreFlightCheck({ checked: true, error: INVALID_CONNECTOR_ID_MESSAGE })
+      }
+    }, [connectorOrigin])
 
     useEffect(() => {
       if (preFlightCheck.checked || !connectorUrl || !errorReporter) return
@@ -488,10 +512,8 @@ const QuilttConnector = forwardRef<QuilttConnectorHandle, QuilttConnectorProps>(
       []
     )
 
-    if (!preFlightCheck.checked || !connectorUrl) {
-      return <LoadingScreen testId="loading-screen" />
-    }
-
+    // Error first: an unusable connector ID leaves `connectorUrl` null, which
+    // the loading guard below would otherwise treat as "still loading".
     if (preFlightCheck.error) {
       return (
         <ErrorScreen
@@ -500,6 +522,10 @@ const QuilttConnector = forwardRef<QuilttConnectorHandle, QuilttConnectorProps>(
           cta={() => onExitError?.({ connectorId })}
         />
       )
+    }
+
+    if (!preFlightCheck.checked || !connectorUrl) {
+      return <LoadingScreen testId="loading-screen" />
     }
 
     return (

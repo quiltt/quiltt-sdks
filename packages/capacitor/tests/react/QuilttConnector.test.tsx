@@ -21,16 +21,24 @@ vi.mock('../../src/plugin', () => ({
   },
 }))
 
-vi.mock('@quiltt/react', () => ({
-  ConnectorSDKEventType: {
-    Load: 'Load',
-    ExitSuccess: 'ExitSuccess',
-    ExitAbort: 'ExitAbort',
-    ExitError: 'ExitError',
-  },
-  cdnBase: 'https://cdn.quiltt.dev',
-  useQuilttSession: () => ({ session: sessionMocks.session }),
-}))
+vi.mock('@quiltt/react', async (importOriginal) => {
+  // The component resolves this helper from the package it already depends on,
+  // so it has to be the real implementation for the origin assertions below to
+  // mean anything.
+  const { isTrustedQuilttUrl } = await importOriginal<typeof import('@quiltt/react')>()
+
+  return {
+    ConnectorSDKEventType: {
+      Load: 'Load',
+      ExitSuccess: 'ExitSuccess',
+      ExitAbort: 'ExitAbort',
+      ExitError: 'ExitError',
+    },
+    cdnBase: 'https://cdn.quiltt.dev',
+    isTrustedQuilttUrl,
+    useQuilttSession: () => ({ session: sessionMocks.session }),
+  }
+})
 
 import type { QuilttConnectorHandle } from '../../src/components/react/QuilttConnector'
 import { QuilttConnector } from '../../src/components/react/QuilttConnector'
@@ -107,6 +115,27 @@ describe('QuilttConnector (capacitor)', () => {
     expect(src).toContain('app_launcher_url=https%3A%2F%2Fapp.example.com%2Fquiltt%2Fcallback')
     expect(src).not.toContain('app_launcher_url=https%253A%252F%252Fapp.example.com')
   })
+
+  // The connector ID is interpolated into the connector host, so a `/` or `?`
+  // in it would retarget the iframe — and that URL carries the session token.
+  // The backslash case is the subtle one: the URL parser ends the authority
+  // there, so the host becomes whatever precedes it.
+  const BACKSLASH = String.fromCharCode(92)
+
+  it.each(['evil.com/x', 'evil.com?y=', '../..', `evil.example${BACKSLASH}@`])(
+    'refuses a connector ID that does not resolve to a Quiltt host: %s',
+    (connectorId) => {
+      primePluginMocks()
+
+      const { container } = render(<QuilttConnector connectorId={connectorId} />)
+
+      expect(container.querySelector('iframe')).toBeNull()
+      expect(screen.getByText(/Invalid connector ID/)).toBeTruthy()
+
+      // The token must never be sent to the unvalidated host.
+      expect(fetch).not.toHaveBeenCalled()
+    }
+  )
 
   it('opens system browser on navigate events from trusted origin', () => {
     primePluginMocks()

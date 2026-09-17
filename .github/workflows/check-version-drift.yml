@@ -1,0 +1,30 @@
+name: Check Version Drift
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    paths:
+      - ".changeset/config.json"
+      - "packages/*/package.json"
+      - "scripts/check-version-drift.mjs"
+      - ".github/actions/check-version-drift/**"
+      - ".github/workflows/check-version-drift.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  check-version-drift:
+    name: Package Version Lock Step
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js Environment
+        uses: ./.github/actions/setup-js
+        with:
+          build-packages: "false"
+
+      - name: Check for version drift
+        uses: ./.github/actions/check-version-drift
