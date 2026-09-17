@@ -156,13 +156,12 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      # No Gemfile.lock is committed: `bundler-cache` runs `bundle lock` when one
+      # is missing, so it installs and caches the newest compatible gems.
+      # The Ruby version is read from .ruby-version.
       - uses: ruby/setup-ruby@v1
         with:
-          ruby-version: "3.4.7"
           bundler-cache: true
-
-      - name: Install Fastlane
-        run: bundle install
 
       - name: Build and test
         run: |
@@ -253,13 +252,12 @@ jobs:
         with:
           xcode-version: "16.2"
 
+      # No Gemfile.lock is committed: `bundler-cache` runs `bundle lock` when one
+      # is missing, so it installs and caches the newest compatible gems.
+      # The Ruby version is read from .ruby-version.
       - uses: ruby/setup-ruby@v1
         with:
-          ruby-version: "3.4.7"
           bundler-cache: true
-
-      - name: Install dependencies
-        run: bundle install
 
       - name: Build Swift package
         working-directory: .

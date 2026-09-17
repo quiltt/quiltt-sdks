@@ -3,6 +3,10 @@ node_modules
 .pnp
 .pnp.js
 
+# Ruby: no lockfile is committed, so bundler always resolves the latest
+# compatible gems (see Gemfile)
+Gemfile.lock
+
 # packages
 dist
 
