@@ -2,7 +2,7 @@ import { nextTick } from 'vue'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { mount } from '@vue/test-utils'
+import { enableAutoUnmount, mount } from '@vue/test-utils'
 
 const pluginMocks = vi.hoisted(() => ({
   openUrl: vi.fn(),
@@ -42,6 +42,12 @@ afterEach(() => {
   vi.clearAllMocks()
   vi.unstubAllGlobals()
 })
+
+// Unmount every connector mounted by a test before resetting the environment.
+// Each mounted connector registers a window message listener, a deep-link
+// listener, and a delayed load timer that only `onUnmounted` cleans up, so a
+// later test could otherwise trigger an earlier one's listener or timer.
+enableAutoUnmount(afterEach)
 
 beforeEach(() => {
   vi.stubGlobal(
