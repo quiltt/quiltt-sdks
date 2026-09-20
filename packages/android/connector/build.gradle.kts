@@ -61,7 +61,7 @@ dependencies {
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
     
     // Direct dependencies to fix security vulnerabilities in transitive dependencies
-    implementation("org.bouncycastle:bcprov-jdk18on:1.84")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.85")
     implementation("io.netty:netty-codec:4.1.138.Final")
     implementation("io.netty:netty-codec-http:4.1.138.Final")
     implementation("io.netty:netty-codec-http2:4.1.138.Final")
