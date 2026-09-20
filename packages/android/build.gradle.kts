@@ -17,7 +17,7 @@ subprojects {
                 "commons-io:commons-io:2.14.0",
                 "com.google.guava:guava:32.0.1-jre",
                 "com.google.protobuf:protobuf-java:3.25.5",
-                "org.bouncycastle:bcprov-jdk18on:1.84",
+                "org.bouncycastle:bcprov-jdk18on:1.85",
                 "io.netty:netty-buffer:4.1.138.Final",
                 "io.netty:netty-codec:4.1.138.Final",
                 "io.netty:netty-codec-http:4.1.138.Final",
