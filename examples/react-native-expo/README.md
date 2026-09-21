@@ -34,6 +34,25 @@ Set these values in `.env` for real Quiltt testing:
 - `EXPO_PUBLIC_CONNECTOR_ID`
 - `EXPO_PUBLIC_APP_LAUNCHER_URL` (must be an `https://` app link)
 
+## Native Projects
+
+The `ios/` and `android/` projects are **committed** to the repository and serve
+as the single source of truth. Do not run `expo prebuild` as part of any
+automated build — it regenerates the native projects from the Expo template and
+would churn the committed files (and drop hand-applied settings like the debug
+network-security config and the Gradle build cache).
+
+When `app.json`, config plugins, or Expo/React Native dependencies change native
+output, regenerate deliberately and commit the resulting delta:
+
+```bash
+pnpm run native:prebuild       # CI=1 expo prebuild
+pnpm run native:prebuild:clean # CI=1 expo prebuild --clean
+```
+
+The package intentionally has no `build`/`prebuild` npm scripts, so root
+`pnpm build` (Turbo) skips it and never touches the native projects.
+
 ## Run Targets
 
 Open on iOS Simulator (macOS + Xcode installed):

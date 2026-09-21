@@ -1,10 +1,12 @@
 name: Release Flutter SDK
 
-# Dispatched by release-mobile.yml after it creates the flutter/v* tag.
-# Running under that tag ref ensures the OIDC token carries refs/tags/flutter/v*,
-# which matches the trusted-publishing tag pattern configured on pub.dev.
+# Triggered when release-mobile.yml pushes the flutter/v* tag. pub.dev's OIDC
+# trusted-publishing check only accepts runs triggered by an actual tag `push`
+# event (workflow_dispatch is rejected even when run against the tag ref).
 on:
-  workflow_dispatch:
+  push:
+    tags:
+      - "flutter/v*"
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 

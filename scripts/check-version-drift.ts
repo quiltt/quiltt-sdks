@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * check-version-drift.mjs
+ * check-version-drift.ts
  *
  * Verifies the Changesets fixed versioning group still matches the packages that
  * exist, so no package can drift onto its own version line.
@@ -19,7 +19,7 @@
  *   5. Every package that is not ignored is on the same version
  *
  * Usage:
- *   node scripts/check-version-drift.mjs
+ *   node scripts/check-version-drift.ts
  */
 
 import { readdir, readFile } from 'node:fs/promises'
@@ -30,16 +30,27 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const PACKAGES_DIR = join(ROOT, 'packages')
 const CONFIG_PATH = join(ROOT, '.changeset', 'config.json')
 
+interface PackageInfo {
+  dir: string
+  name: string
+  version: string
+}
+
+interface ChangesetConfig {
+  fixed?: string[][]
+  ignore?: string[]
+}
+
 /**
  * Read every package manifest under `packages/`.
  *
  * A directory without a readable manifest is reported separately rather than
  * ignored, since that is exactly what a half-added package looks like.
  */
-async function readPackages() {
+async function readPackages(): Promise<{ packages: PackageInfo[]; manifestless: string[] }> {
   const entries = await readdir(PACKAGES_DIR, { withFileTypes: true })
-  const packages = []
-  const manifestless = []
+  const packages: PackageInfo[] = []
+  const manifestless: string[] = []
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue
@@ -47,7 +58,7 @@ async function readPackages() {
     const manifestPath = join(PACKAGES_DIR, entry.name, 'package.json')
 
     try {
-      const manifest = JSON.parse(await readFile(manifestPath, 'utf-8'))
+      const manifest = JSON.parse(await readFile(manifestPath, 'utf-8')) as PackageInfo
       packages.push({ dir: entry.name, name: manifest.name, version: manifest.version })
     } catch {
       manifestless.push(entry.name)
@@ -60,23 +71,23 @@ async function readPackages() {
 /**
  * Flatten the `fixed` groups into a package name to group lookup.
  */
-function groupIndex(fixedGroups) {
-  const index = new Map()
+function groupIndex(fixedGroups: string[][]): Map<string, string[]> {
+  const index = new Map<string, string[]>()
   for (const group of fixedGroups) {
     for (const name of group) index.set(name, group)
   }
   return index
 }
 
-async function main() {
-  const config = JSON.parse(await readFile(CONFIG_PATH, 'utf-8'))
+async function main(): Promise<void> {
+  const config = JSON.parse(await readFile(CONFIG_PATH, 'utf-8')) as ChangesetConfig
   const { packages, manifestless } = await readPackages()
 
   const fixedGroups = config.fixed ?? []
   const index = groupIndex(fixedGroups)
   const ignored = new Set(config.ignore ?? [])
 
-  const errors = []
+  const errors: string[] = []
 
   // 1. Every package must be in a fixed group, or it versions on its own.
   const ungrouped = packages.filter((p) => !index.has(p.name))

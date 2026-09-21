@@ -4,10 +4,8 @@
   "main": "expo-router/entry",
   "type": "commonjs",
   "scripts": {
-    "prebuild": "CI=1 expo prebuild",
-    "prebuild:clean": "CI=1 expo prebuild --clean",
-    "build": "pnpm run prebuild",
-    "build:clean": "pnpm run prebuild:clean",
+    "native:prebuild": "CI=1 expo prebuild",
+    "native:prebuild:clean": "CI=1 expo prebuild --clean",
     "start": "expo start",
     "dev": "expo start",
     "android": "expo run:android",

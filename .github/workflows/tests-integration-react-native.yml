@@ -290,6 +290,8 @@ jobs:
           java-version: "17"
 
       - name: Install Maestro CLI
+        env:
+          MAESTRO_VERSION: "2.10.0"
         run: |
           curl -fsSL "https://get.maestro.mobile.dev" | bash
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
@@ -421,6 +423,8 @@ jobs:
         working-directory: ./examples/react-native-expo
 
       - name: Install Maestro CLI
+        env:
+          MAESTRO_VERSION: "2.10.0"
         run: |
           curl -fsSL "https://get.maestro.mobile.dev" | bash
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"

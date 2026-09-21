@@ -15,6 +15,15 @@ permissions:
   actions: write
 
 jobs:
+  check-tool-versions:
+    name: Tool Version Consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check tool version consistency
+        run: node scripts/check-tool-versions.ts
+
   test:
     name: Run Tests
     runs-on: ubuntu-latest

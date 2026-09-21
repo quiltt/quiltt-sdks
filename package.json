@@ -11,9 +11,10 @@
     "build:packages": "turbo run build --filter='./packages/*'",
     "bundlesize": "size-limit",
     "changeset": "npx changeset",
-    "check:deprecations": "node scripts/check-deprecations.mjs",
+    "check:deprecations": "node scripts/check-deprecations.ts",
     "check:packages": "pnpm check-dependency-version-consistency .",
-    "check:version-drift": "node scripts/check-version-drift.mjs",
+    "check:tool-versions": "node scripts/check-tool-versions.ts",
+    "check:version-drift": "node scripts/check-version-drift.ts",
     "clean": "turbo run clean",
     "dev": "turbo run dev --parallel",
     "lint": "turbo run lint",
@@ -44,7 +45,7 @@
     "vitest": "4.1.3",
     "vitest-react-native": "0.1.5"
   },
-  "packageManager": "pnpm@11.19.0",
+  "packageManager": "pnpm@12.4.2",
   "size-limit": [
     {
       "path": "./packages/core/dist/index.js",

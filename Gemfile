@@ -11,5 +11,11 @@ source 'https://rubygems.org'
 gem 'fastlane'
 
 # Required directly by packages/*/fastlane/Fastfile; not dependencies of fastlane.
+gem 'bigdecimal', '>= 4.1.3'
+gem 'cocoapods', '~> 1.17.0'
+gem 'excon', '>= 1.5.0'
+gem 'faraday', '>= 1.10.6'
+gem 'json', '>= 2.21.2'
 gem 'octokit'
+gem 'rubyzip', '>= 3.4.0'
 gem 'semantic'

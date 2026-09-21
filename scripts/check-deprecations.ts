@@ -1,16 +1,17 @@
 #!/usr/bin/env node
 
 /**
- * check-deprecations.mjs
+ * check-deprecations.ts
  *
  * Scans .changeset/*.md files for major version bumps. If any are found,
  * scans the source tree for leftover @deprecated tags and deprecation
  * console warnings, then reports them and exits non-zero.
  *
  * Usage:
- *   node scripts/check-deprecations.mjs
+ *   node scripts/check-deprecations.ts
  */
 
+import type { Dirent } from 'node:fs'
 import { createReadStream } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
@@ -25,24 +26,26 @@ const PACKAGES_DIR = join(ROOT, 'packages')
 // Changeset parsing
 // ---------------------------------------------------------------------------
 
+type Bump = { package: string; bump: string }
+
 /**
  * Parse the YAML frontmatter from a changeset .md file.
  * Returns an array of package bump entries: [{ package: string, bump: string }]
  */
-async function parseChangesetFile(filePath) {
+async function parseChangesetFile(filePath: string): Promise<Bump[]> {
   const content = await readFile(filePath, 'utf-8')
   const lines = content.split('\n')
 
   // Changeset frontmatter is between the first pair of --- markers
   if (lines[0]?.trim() !== '---') return []
 
-  const frontmatterLines = []
+  const frontmatterLines: string[] = []
   for (let i = 1; i < lines.length; i++) {
     if (lines[i].trim() === '---') break
     frontmatterLines.push(lines[i])
   }
 
-  const entries = []
+  const entries: Bump[] = []
   for (const line of frontmatterLines) {
     // Format: "@quiltt/core": major   OR   "@quiltt/core": "major"
     const match = line.match(/^"(@quiltt\/[^"]+)":\s*"?(\w+)"?/)
@@ -57,8 +60,8 @@ async function parseChangesetFile(filePath) {
 /**
  * Return true if any changeset in .changeset/ declares a major bump.
  */
-async function hasMajorBump() {
-  let files
+async function hasMajorBump(): Promise<boolean> {
+  let files: string[]
   try {
     files = await readdir(CHANGESET_DIR)
   } catch {
@@ -82,10 +85,11 @@ async function hasMajorBump() {
 // ---------------------------------------------------------------------------
 
 /**
- * Check if a line is inside a JSDoc block comment (/** ... *​/)
- * Very simple state-machine: track whether we're inside /**, end at *​/
+ * Check if a line is inside a JSDoc block comment.
+ * Very simple state-machine: track whether we're inside a block that
+ * opens with slash-star-star and closes with star-slash.
  */
-function isInsideJSDocBlock(lines, lineIndex) {
+function isInsideJSDocBlock(lines: string[], lineIndex: number): boolean {
   let inBlock = false
   for (let i = 0; i <= lineIndex; i++) {
     const trimmed = lines[i].trim()
@@ -102,19 +106,21 @@ function isInsideJSDocBlock(lines, lineIndex) {
   return inBlock || lines[lineIndex].trim().startsWith('/**')
 }
 
+type Finding = { line: number; content: string; type: 'jsdoc' | 'console-warn' }
+
 /**
  * Scan a single file for deprecation indicators.
  * Returns an array of findings: [{ line, content }]
  */
-async function scanSourceFile(filePath) {
-  const findings = []
+async function scanSourceFile(filePath: string): Promise<Finding[]> {
+  const findings: Finding[] = []
 
   const rl = createInterface({
     input: createReadStream(filePath),
     crlfDelay: Infinity,
   })
 
-  const lines = []
+  const lines: string[] = []
   for await (const line of rl) {
     lines.push(line)
   }
@@ -147,8 +153,8 @@ async function scanSourceFile(filePath) {
  * Walk packages/ directories. Uses simple recursive descent,
  * skipping build artifact directories.
  */
-async function* walkSourceFiles(dir) {
-  let entries
+async function* walkSourceFiles(dir: string): AsyncGenerator<string> {
+  let entries: Dirent[] = []
   try {
     entries = await readdir(dir, { withFileTypes: true })
   } catch {
@@ -173,7 +179,9 @@ async function* walkSourceFiles(dir) {
 // Main
 // ---------------------------------------------------------------------------
 
-async function main() {
+type FindingWithFile = Finding & { file: string }
+
+async function main(): Promise<void> {
   console.log(':: Check: Scanning .changeset/ for major version bumps...')
   const major = await hasMajorBump()
 
@@ -184,7 +192,7 @@ async function main() {
 
   console.log(':: Major bump detected! Auditing for leftover deprecations...\n')
 
-  const allFindings = []
+  const allFindings: FindingWithFile[] = []
 
   for await (const filePath of walkSourceFiles(PACKAGES_DIR)) {
     const relativePath = filePath.replace(ROOT, '').replace(/^\//, '')
