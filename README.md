@@ -17,7 +17,7 @@ The CI matrix tests against the following versions. Update this table when chang
 | Node.js       | 20                     | 26               |
 | Android (JDK) | 17 (AGP 8.x minimum)   | 21 (current LTS) |
 | Flutter       | 3.32.0 (Dart >= 3.8.0) | 3.41.6           |
-| iOS           | 17.5                   | 18.2             |
+| iOS           | 17.5                   | 18.5             |
 
 ## Getting Started
 
