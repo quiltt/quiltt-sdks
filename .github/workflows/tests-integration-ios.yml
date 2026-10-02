@@ -23,7 +23,7 @@ permissions:
 jobs:
   test-ios:
     name: iOS Integration Tests
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 60
     defaults:
       run:
@@ -34,7 +34,7 @@ jobs:
 
       - uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: "16.2"
+          xcode-version: "16.4"
 
       # No Gemfile.lock is committed: `bundler-cache` runs `bundle lock` when one
       # is missing, so it installs and caches the newest compatible gems.
@@ -74,7 +74,7 @@ jobs:
               test
           }
 
-          run_ui_tests "platform=iOS Simulator,name=iPhone 16 Pro,OS=18.2" || run_ui_tests "platform=iOS Simulator,name=iPhone 16 Pro"
+          run_ui_tests "platform=iOS Simulator,name=iPhone 16 Pro,OS=18.5" || run_ui_tests "platform=iOS Simulator,name=iPhone 16 Pro"
 
       - if: failure()
         name: Upload iOS test artifacts

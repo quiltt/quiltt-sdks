@@ -17,7 +17,7 @@ swiftlint 0.65.1
 
 # Dart 3.11.4      — bundled with Flutter 3.41.6 (do not pin separately)
 
-# Xcode 16.2       — pinned in CI; install via Xcodes/App Store, not mise
+# Xcode 16.4       — pinned in CI; install via Xcodes/App Store, not mise
 
 # Swift 5.9        — from Package.swift `swift-tools-version`; tied to Xcode
 
