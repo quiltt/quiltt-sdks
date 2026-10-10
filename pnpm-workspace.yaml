@@ -19,8 +19,8 @@ overrides:
   '@vue/shared@<=3.5.40': 3.5.40
   '@xmldom/xmldom@<=0.8.14': 0.8.15
   'baseline-browser-mapping@<=2.10.44': 2.11.0
-  'brace-expansion@<=2.1.3': ^2.1.3
-  'brace-expansion@>4.0.0 <5.0.9': ^5.0.9
+  'brace-expansion@<=2.1.3': ^2.1.7
+  'brace-expansion@>4.0.0 <5.0.9': ^5.0.12
   'browserslist@<=4.28.6': 4.28.7
   'es-module-lexer@2': 3.0.2
   'fast-uri@<=3.1.5': 3.1.6
@@ -33,8 +33,8 @@ overrides:
   'query-string@7.1.3': 9.5.0
   'react-native>yargs': 17.7.2
   'read-yaml-file>js-yaml': '>=3.15.2 <4'
-  'serialize-javascript@<=7.0.5': ^7.0.5
-  'sharp@<=0.35.3': 0.35.4
+  'serialize-javascript@<=7.0.5': ^7.1.2
+  'sharp@<=0.35.3': 0.35.5
   'srvx@<=0.12.0': 0.12.0
   'tar@<=7.5.21': 7.5.21
   'undici@<=7.28.0': 7.29.0
@@ -51,4 +51,6 @@ overrides:
   # react-native, metro, jest-cli, bunchee.
   'yargs@<18.0.0': ^17.7.2
   'yargs@>18.0.0 <=18.1.0': ^18.1.0
+  'cjs-module-lexer@1': ^2.2.0
+  'simple-git@3': ^4.0.1
   'zod@3': 4.6.0
