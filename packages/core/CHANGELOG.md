@@ -1,5 +1,13 @@
 # @quiltt/core
 
+## 6.1.5
+
+### Patch Changes
+
+- [#571](https://github.com/quiltt/quiltt-sdks/pull/571) [`eac5d2a`](https://github.com/quiltt/quiltt-sdks/commit/eac5d2a5b0ac26728b40131e8b755e623fbb5fc3) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Cap `fetchWithRetry` retries on HTTP 429 responses so a rate-limited request can no longer amplify into a retry storm
+
+- [#571](https://github.com/quiltt/quiltt-sdks/pull/571) [`eac5d2a`](https://github.com/quiltt/quiltt-sdks/commit/eac5d2a5b0ac26728b40131e8b755e623fbb5fc3) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Validate Session tokens against `POST /v1/introspect/session_token` instead of the deprecated `GET /v1/users/session`. `AuthAPI.ping()` now uses the introspection endpoint; the response payload is unchanged.
+
 ## 6.1.4
 
 ### Patch Changes
