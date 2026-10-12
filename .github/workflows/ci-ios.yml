@@ -24,22 +24,20 @@ defaults:
 jobs:
   build:
     name: "iOS ${{ matrix.ios-version }} CI"
-    runs-on: macos-14
+    runs-on: macos-15
     strategy:
       fail-fast: false
       matrix:
         include:
-          - ios-version: "18.2"
+          - ios-version: "18.5"
             device: "iPhone 16 Pro"
-          - ios-version: "17.5"
-            device: "iPhone 15"
 
     steps:
       - uses: actions/checkout@v6
 
       - uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: "16.2"
+          xcode-version: "16.4"
 
       # No Gemfile.lock is committed: `bundler-cache` runs `bundle lock` when one
       # is missing, so it installs and caches the newest compatible gems.
@@ -69,7 +67,7 @@ jobs:
             -destination "platform=iOS Simulator,name=${{ matrix.device }}"
 
       - name: Build example app
-        if: matrix.ios-version == '18.2'
+        if: matrix.ios-version == '18.5'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bundle exec fastlane ios build_example_app

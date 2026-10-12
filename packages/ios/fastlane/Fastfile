@@ -149,7 +149,7 @@ platform :ios do
       # For CI, we want to build for simulator to avoid code signing issues
       if ENV['CI']
         # First attempt with a known simulator that should work on recent versions
-        success = system('xcodebuild -workspace ExampleSwiftUI/ExampleSwiftUI.xcodeproj/project.xcworkspace -scheme ExampleSwiftUI -sdk iphonesimulator -destination "platform=iOS Simulator,name=iPhone 16 Pro,OS=18.2" build')
+        success = system('xcodebuild -workspace ExampleSwiftUI/ExampleSwiftUI.xcodeproj/project.xcworkspace -scheme ExampleSwiftUI -sdk iphonesimulator -destination "platform=iOS Simulator,name=iPhone 16 Pro,OS=18.5" build')
 
         # If that fails, try to find a suitable simulator dynamically
         if !success
