@@ -1,4 +1,4 @@
-import { endpointAuth, version } from '@/config'
+import { endpointAuth, endpointIntrospectSessionToken, version } from '@/config'
 import { extractVersionNumber, getSDKAgent } from '@/utils/telemetry'
 
 import type { FetchResponse } from './fetchWithRetry'
@@ -56,13 +56,15 @@ export class AuthAPI {
   }
 
   /**
+   * Validates a Session token via the introspection endpoint.
+   *
    * Response Statuses:
    *  - 200: OK           -> Session is Valid
    *  - 401: Unauthorized -> Session is Invalid
    */
   ping = async (token: string) => {
-    const response = await fetchWithRetry<Ping>(endpointAuth, {
-      method: 'GET',
+    const response = await fetchWithRetry<Ping>(endpointIntrospectSessionToken, {
+      method: 'POST',
       ...this.config(token),
     })
     return response

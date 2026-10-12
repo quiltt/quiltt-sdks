@@ -45,6 +45,9 @@ describe('Configuration Constants', () => {
     expect(config.cdnBase).toBe('https://cdn.quiltt.io')
     expect(config.websocketsBase).toBe('wss://api.quiltt.io')
     expect(config.endpointAuth).toBe('https://auth.quiltt.io/v1/users/session')
+    expect(config.endpointIntrospectSessionToken).toBe(
+      'https://auth.quiltt.io/v1/introspect/session_token'
+    )
     expect(config.endpointGraphQL).toBe('https://api.quiltt.io/v1/graphql')
     expect(config.endpointRest).toBe('https://api.quiltt.io/v1')
     expect(config.endpointWebsockets).toBe('wss://api.quiltt.io/websockets')
@@ -64,6 +67,9 @@ describe('Configuration Constants', () => {
       expect(config.authBase).toBe('https://auth.quiltt.io')
       expect(config.cdnBase).toBe('https://cdn.quiltt.io')
       expect(config.endpointAuth).toBe('https://auth.quiltt.io/v1/users/session')
+      expect(config.endpointIntrospectSessionToken).toBe(
+        'https://auth.quiltt.io/v1/introspect/session_token'
+      )
       expect(config.endpointGraphQL).toBe('https://api.quiltt.io/v1/graphql')
       expect(config.endpointWebsockets).toBe('wss://api.quiltt.io/websockets')
     })
@@ -86,6 +92,7 @@ describe('Configuration Constants', () => {
       expect(config.authBase).toBe(AUTH)
       expect(config.cdnBase).toBe(CDN)
       expect(config.endpointAuth).toBe(`${AUTH}/v1/users/session`)
+      expect(config.endpointIntrospectSessionToken).toBe(`${AUTH}/v1/introspect/session_token`)
       expect(config.endpointGraphQL).toBe(`${API}/v1/graphql`)
       expect(config.endpointRest).toBe(`${API}/v1`)
       expect(config.endpointWebsockets).toBe('wss://a.quiltt.io/websockets')
