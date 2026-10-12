@@ -1,5 +1,14 @@
 # @quiltt/react
 
+## 6.1.5
+
+### Patch Changes
+
+- [#571](https://github.com/quiltt/quiltt-sdks/pull/571) [`eac5d2a`](https://github.com/quiltt/quiltt-sdks/commit/eac5d2a5b0ac26728b40131e8b755e623fbb5fc3) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Stop re-validating a Session token after the server rejects it with 401. `importSession()` now latches rejected tokens at module scope, so session-expiry effects, provider remounts and other repeated re-imports of a dead token no longer ping it again
+
+- Updated dependencies [[`eac5d2a`](https://github.com/quiltt/quiltt-sdks/commit/eac5d2a5b0ac26728b40131e8b755e623fbb5fc3), [`eac5d2a`](https://github.com/quiltt/quiltt-sdks/commit/eac5d2a5b0ac26728b40131e8b755e623fbb5fc3)]:
+  - @quiltt/core@6.1.5
+
 ## 6.1.4
 
 ### Patch Changes
