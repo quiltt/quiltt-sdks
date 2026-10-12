@@ -172,8 +172,37 @@ describe('useQuilttSession', () => {
     expect(await result.importSession(token)).toBe(false)
     expect(setSession).toHaveBeenCalledWith(null)
 
+    // A different token is not covered by the 401 latch, so it still pings.
+    const otherToken = createToken(3600, 'other-entity-id')
     mocks.pingMock.mockResolvedValueOnce({ status: 500 } as any)
-    await expect(result.importSession(token)).rejects.toThrow(/Unexpected response status 500/)
+    await expect(result.importSession(otherToken)).rejects.toThrow(/Unexpected response status 500/)
+
+    unmount()
+  })
+
+  it('does not re-ping a token the server rejected with 401', async () => {
+    const sessionRef = ref(null)
+    const setSession = vi.fn()
+
+    const { result, unmount } = mountComposable(
+      () => useQuilttSession(),
+      [
+        [QuilttSessionKey as unknown as symbol, sessionRef],
+        [QuilttSetSessionKey as unknown as symbol, setSession],
+        [QuilttClientIdKey as unknown as symbol, ref('cid_test')],
+      ]
+    )
+
+    const token = createToken()
+
+    mocks.pingMock.mockResolvedValueOnce({ status: 401 } as any)
+    expect(await result.importSession(token)).toBe(false)
+
+    mocks.pingMock.mockClear()
+
+    // Re-importing the same dead token must not hit the network again.
+    expect(await result.importSession(token)).toBe(false)
+    expect(mocks.pingMock).not.toHaveBeenCalled()
 
     unmount()
   })

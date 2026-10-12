@@ -23,10 +23,18 @@ export const useImportSession: UseImportSession = (auth, session, setSession, en
   // go through full validation before being used.
   const validatedTokenRef = useRef<string | undefined>(undefined)
 
+  // Tokens the server rejected with 401. A rejected token is dead: callers
+  // re-import on provider remount and on session expiry, so without this latch
+  // each retry is another doomed request.
+  const rejectedTokensRef = useRef<Set<string>>(new Set())
+
   const importSession = useCallback<ImportSession>(
     async (token) => {
       // Is there a token?
       if (!token) return !!session
+
+      // Give-up latch: once the server has rejected a token, don't ping it again.
+      if (rejectedTokensRef.current.has(token)) return false
 
       // Short-circuit only if we explicitly validated this token AND it's still
       // active in session state. This prevents tokens silently restored from
@@ -50,6 +58,7 @@ export const useImportSession: UseImportSession = (auth, session, setSession, en
           return true
 
         case 401:
+          rejectedTokensRef.current.add(token)
           validatedTokenRef.current = undefined
           setSession(null)
           return false

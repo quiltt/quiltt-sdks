@@ -135,7 +135,15 @@ export const authBase = authBaseUrl
 export const cdnBase = cdnBaseUrl
 export const websocketsBase = websocketsBaseUrl
 
+// Session CRUD lives on `/v1/users/session`: `identify` (POST), `authenticate`
+// (PUT) and `revoke` (DELETE) all still address this resource.
 export const endpointAuth = `${authBaseUrl}/v1/users/session`
+
+// Session validation (`AuthAPI.ping`) uses the introspection endpoint. The
+// server returns the same `UserSessionBlueprint` payload it returned from the
+// deprecated `GET /v1/users/session`, but only as POST.
+export const endpointIntrospectSessionToken = `${authBaseUrl}/v1/introspect/session_token`
+
 export const endpointGraphQL = `${apiBaseUrl}/v1/graphql`
 export const endpointRest = `${apiBaseUrl}/v1`
 export const endpointWebsockets = `${websocketsBaseUrl}/websockets`

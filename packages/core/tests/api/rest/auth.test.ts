@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PasscodePayload, UsernamePayload } from '@/api/rest/auth'
 import { AuthAPI } from '@/api/rest/auth'
 import { fetchWithRetry } from '@/api/rest/fetchWithRetry'
-import { endpointAuth } from '@/config'
+import { endpointIntrospectSessionToken } from '@/config'
 
 vi.mock('@/api/rest/fetchWithRetry', () => ({
   fetchWithRetry: vi.fn(),
@@ -73,7 +73,7 @@ describe('AuthAPI', () => {
 
       expect(errorSpy).not.toHaveBeenCalled()
       const fetchOptions = (fetchWithRetry as Mock).mock.calls[0][1]
-      expect(fetchOptions.method).toBe('GET')
+      expect(fetchOptions.method).toBe('POST')
       expect(fetchOptions.headers.get('Authorization')).toBe(`Bearer ${token}`)
     })
 
@@ -97,8 +97,8 @@ describe('AuthAPI', () => {
       await authAPI.ping(token)
 
       const fetchOptions = (fetchWithRetry as Mock).mock.calls[0][1]
-      expect((fetchWithRetry as Mock).mock.calls[0][0]).toBe(endpointAuth)
-      expect(fetchOptions.method).toBe('GET')
+      expect((fetchWithRetry as Mock).mock.calls[0][0]).toBe(endpointIntrospectSessionToken)
+      expect(fetchOptions.method).toBe('POST')
       expect(fetchOptions.retry).toBe(true)
       assertHeaders(fetchOptions.headers)
     })

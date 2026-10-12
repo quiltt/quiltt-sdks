@@ -121,6 +121,31 @@ describe('fetchWithRetry', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
+  it('caps 429 retries independently of the general retry budget', async () => {
+    fetchMock.mockResolvedValue(createResponse({ status: 429, statusText: 'Too Many Requests' }))
+
+    const { fetchWithRetry } = await import('@/api/rest/fetchWithRetry')
+    const promise = fetchWithRetry('/test', { retry: true })
+    const rejection = expect(promise).rejects.toThrow('HTTP error with status 429')
+
+    await vi.runAllTimersAsync()
+    await rejection
+    // One initial attempt plus MAX_429_RETRIES (1), not the general RETRIES (10)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not apply the 429 cap to server errors', async () => {
+    fetchMock.mockResolvedValue(createResponse({ status: 503, statusText: 'Service Unavailable' }))
+
+    const { fetchWithRetry } = await import('@/api/rest/fetchWithRetry')
+    const promise = fetchWithRetry('/test', { retry: true, retriesRemaining: 2 })
+    const rejection = expect(promise).rejects.toThrow('HTTP error with status 503')
+
+    await vi.runAllTimersAsync()
+    await rejection
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
   it('retries network errors and rejects after retries are exhausted', async () => {
     const networkError = new Error('Network down')
     fetchMock.mockRejectedValue(networkError)

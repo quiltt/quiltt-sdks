@@ -302,6 +302,31 @@ describe('useImportSession', () => {
       expect(mockAuth.ping).toHaveBeenCalledWith(testJWT.token)
       expect(mockSetSession).toHaveBeenCalledWith(null)
     })
+
+    it('does not re-ping a token the server rejected with 401', async () => {
+      const testJWT = createTestJWT()
+
+      vi.mocked(JsonWebTokenParse).mockReturnValue(testJWT)
+      mockAuth.ping.mockResolvedValue({ status: 401, data: {} })
+
+      const { result } = renderHook(() =>
+        useImportSession(mockAuth as unknown as AuthAPI, undefined, mockSetSession)
+      )
+
+      await act(async () => {
+        expect(await result.current(testJWT.token)).toBe(false)
+      })
+
+      mockAuth.ping.mockClear()
+
+      // A provider remount or expiry effect re-importing the same dead token
+      // must not hit the network again.
+      await act(async () => {
+        expect(await result.current(testJWT.token)).toBe(false)
+      })
+
+      expect(mockAuth.ping).not.toHaveBeenCalled()
+    })
   })
 
   describe('with unexpected status codes', () => {

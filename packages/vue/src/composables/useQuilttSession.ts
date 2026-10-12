@@ -48,7 +48,7 @@ const parse = JsonWebTokenParse<PrivateClaims>
 // WeakMap ensures the entry is GC'd automatically when the app is torn down.
 const validatedTokenCache = new WeakMap<
   object,
-  { token: string | undefined; environmentId: string | undefined }
+  { token: string | undefined; environmentId: string | undefined; rejectedTokens: Set<string> }
 >()
 
 /**
@@ -125,7 +125,11 @@ export const useQuilttSession = (environmentId?: string): UseQuilttSessionReturn
   // All composable instances within the same app share one validated marker, keyed
   // by the injected sessionRef so different apps (e.g. in tests) stay isolated.
   if (!validatedTokenCache.has(sessionRef)) {
-    validatedTokenCache.set(sessionRef, { token: undefined, environmentId: undefined })
+    validatedTokenCache.set(sessionRef, {
+      token: undefined,
+      environmentId: undefined,
+      rejectedTokens: new Set<string>(),
+    })
   }
   const validatedState = validatedTokenCache.get(sessionRef)!
 
@@ -138,6 +142,9 @@ export const useQuilttSession = (environmentId?: string): UseQuilttSessionReturn
 
     // Is there a token?
     if (!token) return !!sessionRef.value
+
+    // Give-up latch: once the server has rejected a token, don't ping it again.
+    if (validatedState.rejectedTokens.has(token)) return false
 
     // Has this exact token already passed env check + server ping AND is still
     // active in session state? We check sessionRef here so that if the session
@@ -172,6 +179,7 @@ export const useQuilttSession = (environmentId?: string): UseQuilttSessionReturn
       case 401:
         validatedState.token = undefined
         validatedState.environmentId = undefined
+        validatedState.rejectedTokens.add(token)
         setSession(null)
         return false
 
