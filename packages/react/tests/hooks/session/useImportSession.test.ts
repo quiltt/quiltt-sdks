@@ -284,8 +284,10 @@ describe('useImportSession', () => {
   })
 
   describe('with inactive token (401)', () => {
+    // Rejected tokens are latched at module scope, so 401 tests use distinct
+    // tokens to stay independent of each other and of later tests.
     it('returns false and clears local session state', async () => {
-      const testJWT = createTestJWT()
+      const testJWT = createTestJWT({ token: 'inactive.jwt.token' })
 
       vi.mocked(JsonWebTokenParse).mockReturnValue(testJWT)
       mockAuth.ping.mockResolvedValue({ status: 401, data: {} })
@@ -304,7 +306,7 @@ describe('useImportSession', () => {
     })
 
     it('does not re-ping a token the server rejected with 401', async () => {
-      const testJWT = createTestJWT()
+      const testJWT = createTestJWT({ token: 'latched.jwt.token' })
 
       vi.mocked(JsonWebTokenParse).mockReturnValue(testJWT)
       mockAuth.ping.mockResolvedValue({ status: 401, data: {} })
@@ -326,6 +328,37 @@ describe('useImportSession', () => {
       })
 
       expect(mockAuth.ping).not.toHaveBeenCalled()
+    })
+
+    it('does not re-ping a rejected token after unmount and remount', async () => {
+      const testJWT = createTestJWT({ token: 'remount.jwt.token' })
+
+      vi.mocked(JsonWebTokenParse).mockReturnValue(testJWT)
+      mockAuth.ping.mockResolvedValue({ status: 401, data: {} })
+
+      const first = renderHook(() =>
+        useImportSession(mockAuth as unknown as AuthAPI, undefined, mockSetSession)
+      )
+
+      await act(async () => {
+        expect(await first.result.current(testJWT.token)).toBe(false)
+      })
+      expect(mockAuth.ping).toHaveBeenCalledTimes(1)
+      first.unmount()
+
+      mockAuth.ping.mockClear()
+
+      // A remounted provider builds a fresh hook; the latch must outlive it.
+      const second = renderHook(() =>
+        useImportSession(mockAuth as unknown as AuthAPI, undefined, mockSetSession)
+      )
+
+      await act(async () => {
+        expect(await second.result.current(testJWT.token)).toBe(false)
+      })
+
+      expect(mockAuth.ping).not.toHaveBeenCalled()
+      second.unmount()
     })
   })
 

@@ -7,6 +7,24 @@ import type { SetSession } from '@/hooks/useSession'
 
 export type ImportSession = (token: string) => Promise<boolean>
 
+// A token the server rejected with 401 is dead for the lifetime of that token,
+// not the lifetime of a hook. `QuilttAuthProvider` remounts (route changes,
+// keyed subtrees) build a fresh `importSession`, and each remount would ping the
+// same dead token again. The latch therefore lives at module scope so it
+// survives remounts; the cap keeps it bounded in long-lived and server-rendered
+// processes. A Session JWT identifies exactly one session, so keying by token
+// alone is unambiguous.
+const MAX_REJECTED_TOKENS = 100
+const rejectedTokens = new Set<string>()
+
+const rememberRejectedToken = (token: string) => {
+  rejectedTokens.add(token)
+  if (rejectedTokens.size > MAX_REJECTED_TOKENS) {
+    const oldest = rejectedTokens.values().next().value
+    if (oldest !== undefined) rejectedTokens.delete(oldest)
+  }
+}
+
 type UseImportSession = (
   auth: AuthAPI,
   session: Maybe<QuilttJWT> | undefined,
@@ -23,18 +41,17 @@ export const useImportSession: UseImportSession = (auth, session, setSession, en
   // go through full validation before being used.
   const validatedTokenRef = useRef<string | undefined>(undefined)
 
-  // Tokens the server rejected with 401. A rejected token is dead: callers
-  // re-import on provider remount and on session expiry, so without this latch
-  // each retry is another doomed request.
-  const rejectedTokensRef = useRef<Set<string>>(new Set())
+  // Tokens the server rejected with 401 are tracked at module scope (see
+  // `rejectedTokens` above) so a provider remount cannot re-ping a dead token.
 
   const importSession = useCallback<ImportSession>(
     async (token) => {
       // Is there a token?
       if (!token) return !!session
 
-      // Give-up latch: once the server has rejected a token, don't ping it again.
-      if (rejectedTokensRef.current.has(token)) return false
+      // Give-up latch: once the server has rejected a token, don't ping it
+      // again — not on a repeat call, and not after a remount.
+      if (rejectedTokens.has(token)) return false
 
       // Short-circuit only if we explicitly validated this token AND it's still
       // active in session state. This prevents tokens silently restored from
@@ -58,7 +75,7 @@ export const useImportSession: UseImportSession = (auth, session, setSession, en
           return true
 
         case 401:
-          rejectedTokensRef.current.add(token)
+          rememberRejectedToken(token)
           validatedTokenRef.current = undefined
           setSession(null)
           return false
