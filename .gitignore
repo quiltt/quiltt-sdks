@@ -67,3 +67,6 @@ coverage/**/*
 **/coverage/**/*
 **/test-results/**/*
 **/playwright-report/**/*
+
+# DSH
+.dsh-tmp/
