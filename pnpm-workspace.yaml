@@ -1,4 +1,6 @@
 minimumReleaseAge: 4320 # 3 days
+minimumReleaseAgeExclude:
+  - zod@4.6.6
 resolutionMode: "highest"
 packages:
   - "packages/*"
@@ -53,4 +55,4 @@ overrides:
   'yargs@>18.0.0 <=18.1.0': ^18.1.0
   'cjs-module-lexer@1': ^2.2.0
   'simple-git@3': ^4.0.1
-  'zod@3': 4.6.0
+  'zod@3': 4.6.6
