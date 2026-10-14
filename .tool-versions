@@ -7,7 +7,7 @@
 # Consistency enforced by scripts/check-tool-versions.mjs (`pnpm check:tool-versions`)
 
 node     24.14.0
-pnpm     12.4.2
+pnpm     12.11.2
 ruby     3.4.7
 java     temurin-21
 flutter  3.41.6
