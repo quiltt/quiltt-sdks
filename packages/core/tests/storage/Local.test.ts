@@ -134,6 +134,72 @@ describe('LocalStorage', () => {
     })
   })
 
+  describe('blocked storage access', () => {
+    // Firefox with cross-site cookies blocked (and sandboxed iframes) throw a
+    // SecurityError when the `window.localStorage` property itself is read.
+    const blockStorageAccess = () => {
+      Object.defineProperty(window, 'localStorage', {
+        configurable: true,
+        get() {
+          throw new DOMException(
+            "Failed to read the 'localStorage' property from 'Window': Access is denied for this document.",
+            'SecurityError'
+          )
+        },
+      })
+    }
+
+    const restoreStorageAccess = () => {
+      Object.defineProperty(window, 'localStorage', {
+        value: localStorageMock,
+        configurable: true,
+      })
+    }
+
+    afterEach(() => {
+      restoreStorageAccess()
+    })
+
+    it('should not throw when reading localStorage in get', () => {
+      blockStorageAccess()
+
+      expect(() => ls.get('testKey')).not.toThrow()
+      expect(ls.get('testKey')).toBeUndefined()
+    })
+
+    it('should not throw when reading localStorage in set', () => {
+      blockStorageAccess()
+
+      expect(() => ls.set('testKey', { value: 'test' })).not.toThrow()
+    })
+
+    it('should not throw when reading localStorage in remove', () => {
+      blockStorageAccess()
+
+      expect(() => ls.remove('testKey')).not.toThrow()
+    })
+
+    it('should not throw when reading localStorage in clear', () => {
+      blockStorageAccess()
+
+      expect(() => ls.clear()).not.toThrow()
+    })
+
+    it('should not throw when reading localStorage in keys', () => {
+      blockStorageAccess()
+
+      expect(() => ls.keys()).not.toThrow()
+      expect(ls.keys()).toEqual([])
+    })
+
+    it('should report storage as disabled', () => {
+      blockStorageAccess()
+
+      expect(ls.isEnabled()).toBe(false)
+      expect(ls.isDisabled()).toBe(true)
+    })
+  })
+
   describe('error handling', () => {
     it('should handle JSON parse errors in get method', () => {
       // Set invalid JSON directly in localStorage
