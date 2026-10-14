@@ -1,6 +1,4 @@
 minimumReleaseAge: 4320 # 3 days
-minimumReleaseAgeExclude:
-  - zod@4.6.6
 resolutionMode: "highest"
 packages:
   - "packages/*"
