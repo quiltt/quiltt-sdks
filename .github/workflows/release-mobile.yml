@@ -38,7 +38,9 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-          token: ${{ secrets.QUILTTY_RELEASE_GITHUB_TOKEN }}
+          # No `token:` on purpose — the explicit PAT below is the single
+          # credential for every write in this job. See "Create platform tags".
+          persist-credentials: false
 
       - name: Configure Git
         run: |
@@ -68,6 +70,21 @@ jobs:
           printf 'import Foundation\n\npublic let quilttSdkVersion = "%s"\n' "$VERSION" \
             > packages/ios/Sources/QuilttConnector/QuilttSdkVersion.swift
 
+      # Authenticate every write in this job with the release PAT. A push made
+      # with the default GITHUB_TOKEN can never trigger another workflow, which
+      # is subtly fatal here: release-flutter.yml is triggered by the
+      # `flutter/v*` tag push below, and pub.dev's trusted publishing refuses
+      # any run that was not triggered by an actual tag push.
+      - name: Authenticate Git with the release token
+        env:
+          GH_PAT: ${{ secrets.QUILTTY_RELEASE_GITHUB_TOKEN }}
+        run: |
+          # Clear any inherited helper so this is the only credential.
+          git config --local --unset-all http.https://github.com/.extraheader || true
+          git config --local credential.helper ""
+          git config --local http.https://github.com/.extraheader \
+            "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_PAT" | base64 -w 0)"
+
       - name: Commit and push version updates
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
@@ -85,10 +102,12 @@ jobs:
       - name: Create platform tags
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
+          GH_TOKEN: ${{ secrets.QUILTTY_RELEASE_GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           HEAD_SHA=$(git rev-parse HEAD)
           tags_to_push=()
+          flutter_tag_pushed=false
 
           for tag in "v$VERSION" "android/v$VERSION" "flutter/v$VERSION" "ios/v$VERSION"; do
             remote_ref=$(git ls-remote origin "refs/tags/$tag" "refs/tags/$tag^{}")
@@ -111,14 +130,44 @@ jobs:
             # Tag missing on origin — force-create local tag at HEAD (overwrites any stale local tag)
             git tag -f "$tag" HEAD
             tags_to_push+=("refs/tags/$tag:refs/tags/$tag")
+            if [ "$tag" = "flutter/v$VERSION" ]; then
+              flutter_tag_pushed=true
+            fi
           done
 
           if [ ${#tags_to_push[@]} -gt 0 ]; then
+            # Pushing flutter/v$VERSION triggers release-flutter.yml
+            # (on: push: tags: flutter/v*) — required for pub.dev's OIDC
+            # trusted-publishing check, which rejects workflow_dispatch runs.
+            #
+            # This push MUST be authenticated by the release PAT (set up by
+            # "Authenticate Git with the release token"). A tag push made with
+            # the default GITHUB_TOKEN triggers no workflows at all, which
+            # silently skips the Flutter publish.
             git push --atomic origin "${tags_to_push[@]}"
           fi
-          # Pushing flutter/v$VERSION above natively triggers release-flutter.yml
-          # (on: push: tags: flutter/v*) — required for pub.dev's OIDC
-          # trusted-publishing check, which rejects workflow_dispatch runs.
+
+          # Fail loudly if the Flutter publish was not scheduled. Without this a
+          # non-triggering push looks identical to a healthy release: every job
+          # succeeds while pub.dev silently stays a version behind.
+          if [ "$flutter_tag_pushed" = true ]; then
+            echo "Verifying that release-flutter.yml started for flutter/v$VERSION..."
+            for _ in $(seq 1 20); do
+              RUNS=$(gh api \
+                "repos/${GITHUB_REPOSITORY}/actions/workflows/release-flutter.yml/runs?per_page=20" \
+                --jq '[.workflow_runs[] | select(.head_branch == "flutter/v'"$VERSION"'" and .event == "push")] | length' \
+                2>/dev/null || echo 0)
+              if [ "${RUNS:-0}" -gt 0 ]; then
+                echo "release-flutter.yml is running for flutter/v$VERSION"
+                exit 0
+              fi
+              sleep 10
+            done
+            echo "ERROR: flutter/v$VERSION was pushed but release-flutter.yml did not start."
+            echo "ERROR: the Flutter SDK will NOT be published to pub.dev."
+            echo "ERROR: verify the tag push is authenticated with the release PAT."
+            exit 1
+          fi
 
   # ── 3a. Build, test, and publish Android to Maven Central ────────────────────
   publish-android:
