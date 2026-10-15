@@ -278,7 +278,20 @@ If there are version conflicts:
 
 - `NPM_TOKEN`: npm access token with publish permissions
   - **Important**: As of December 2025, npm requires granular access tokens that expire after 90 days. Rotate every 90 days to avoid CI/CD disruption.
-- `QUILTTY_RELEASE_GITHUB_TOKEN`: PAT for Changesets GitHub API interactions
+- `RELEASE_GITHUB_TOKEN`: PAT for Changesets GitHub API interactions and for
+  pushing the release commits, tags and Js/Mobile/Flutter hand-offs
+  - **Important**: must be a **classic** PAT with `repo` + `workflow` scopes.
+    The `workflow` scope is required because the released tags point at commits
+    whose trees contain `.github/workflows/`. A token without it is rejected on
+    push.
+  - A push made with the built-in `GITHUB_TOKEN` **cannot trigger other
+    workflows**, so this token is what allows `release-js.yml` → `@quiltt/core@*`
+    tag → `release-mobile.yml` → `flutter/v*` tag → `release-flutter.yml` to
+    chain. Each workflow asserts the secret is present and valid before writing
+    anything, so a missing or expired token fails loudly instead of silently
+    degrading to `GITHUB_TOKEN`.
+  - Note: GitHub rejects secret names beginning with `GITHUB_`, which is why this
+    is `RELEASE_GITHUB_TOKEN` rather than `GITHUB_RELEASE_TOKEN`.
 
 #### Android Release
 
@@ -292,7 +305,23 @@ If there are version conflicts:
 
 #### Flutter Release
 
-No secrets required. Publishing uses GitHub Actions OIDC — pub.dev is configured to trust the `quiltt/quiltt-sdks` repository with the `pub-dev` environment.
+No *package-specific* secrets required. Publishing uses GitHub Actions OIDC —
+pub.dev is configured to trust the `quiltt/quiltt-sdks` repository with the
+`pub-dev` environment.
+
+Two constraints come with that:
+
+- The `publish-flutter` job must declare `environment: pub-dev`, matching the
+  environment name configured on pub.dev. The name is reflected in the OIDC
+  token, so a mismatch (or a missing declaration) makes pub.dev reject the
+  publish even though the workflow itself succeeds up to that point.
+- The workflow only runs for a **tag push** of `flutter/v*`. pub.dev rejects
+  automated publishing from runs not triggered by a tag push, so
+  `workflow_dispatch` cannot be used as a fallback. Re-pushing a tag that already
+  exists at the same commit fires no event; the tag must be recreated.
+
+The tag is pushed by `release-mobile.yml` using `RELEASE_GITHUB_TOKEN`, which is
+therefore also required for Flutter releases.
 
 ### Workflow Triggers
 
