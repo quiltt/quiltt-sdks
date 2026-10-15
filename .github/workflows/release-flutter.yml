@@ -89,6 +89,14 @@ jobs:
 
       - uses: ./.github/actions/setup-flutter
 
+      # A custom publish workflow must perform the OIDC exchange itself; this is
+      # the action documented for exactly that. It requests a JWT with audience
+      # https://pub.dev, exports it as PUB_TOKEN, and registers it as a pub
+      # credential. Without it `dart pub publish` finds no credential and falls
+      # back to interactive OAuth, which waits forever for a browser click that
+      # never comes in CI.
+      - uses: flutter-actions/setup-pubdev-credentials@v1
+
       - name: Install dependencies
         run: flutter pub get
 
@@ -109,6 +117,25 @@ jobs:
           else
             echo "already_published=false" >> $GITHUB_OUTPUT
           fi
+
+      # Never reach the publish step without a credential. Publishing with none
+      # does not fail — it opens an interactive OAuth prompt and blocks until the
+      # job times out, which is how the 6.1.6 attempt sat silent for 20 minutes.
+      - name: Verify OIDC credential is available
+        if: steps.check_published.outputs.already_published != 'true'
+        run: |
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+            echo "ERROR: no OIDC token endpoint — the job needs 'id-token: write'."
+            exit 1
+          fi
+          if [ -z "${PUB_TOKEN:-}" ]; then
+            echo "ERROR: PUB_TOKEN is not set, so no pub.dev credential was registered."
+            echo "ERROR: 'dart pub publish' would block on an interactive OAuth prompt."
+            echo "ERROR: check the setup-pubdev-credentials step and that pub.dev trusted"
+            echo "ERROR: publishing is enabled for this repository and tag pattern."
+            exit 1
+          fi
+          echo "OIDC credential is present for pub.dev."
 
       - name: Publish to pub.dev
         if: steps.check_published.outputs.already_published != 'true'
