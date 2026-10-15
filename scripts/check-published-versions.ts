@@ -19,10 +19,30 @@
  * live, no package needs publishing. If it is absent, publishing proceeds as
  * before.
  *
- * Exit codes:
- *   0 — nothing to publish, and the version is genuinely live
- *   1 — (with GITHUB_OUTPUT set) there is something to publish
- *   1 — (with GITHUB_OUTPUT unset) the check could not run
+ * This script is an advisor, not a fatal gate. It runs as the first link of the
+ * `publish` chain in package.json:
+ *
+ *   check:published && build:packages && changeset tag && pnpm -r publish
+ *
+ * so its exit code decides whether the release proceeds:
+ *
+ *   0 — the version is not on npm; build and publish it
+ *   1 — the version is already live; skip the chain. The chain turns this into
+ *       a clean success, because a re-run over an already-published version is
+ *       a no-op, not an incident.
+ *   2 — no verdict could be reached (no publishable packages, packages
+ *       disagreeing on a version, or the registry unreachable). Always fatal:
+ *       a registry outage must never be mistaken for "nothing to publish".
+ *
+ * The verdict is also written to `GITHUB_OUTPUT` (`check_ran` +
+ * `should_publish`) when that is set, for anyone reading the run's outputs; the
+ * gating itself does not depend on it, so the same check behaves identically in
+ * CI and on a laptop.
+ *
+ * Earlier revisions exited 1 to mean "there is something to publish", which
+ * aborted the chain on exactly the run that had a release to ship: nothing was
+ * ever published, and the workflow failed in the same second the check
+ * announced it was proceeding.
  *
  * Usage:
  *   node scripts/check-published-versions.ts                 # local / debugging
@@ -37,10 +57,22 @@ import { fileURLToPath } from 'node:url'
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const PACKAGES_DIR = join(ROOT, 'packages')
 const CONFIG_PATH = join(ROOT, '.changeset', 'config.json')
-const REGISTRY = 'https://registry.npmjs.org'
+// Overridable so the "already published" branch can be exercised without
+// waiting for a real release; unset in CI, where it points at npm.
+const REGISTRY = process.env.REGISTRY_URL ?? 'https://registry.npmjs.org'
 
 const ATTEMPTS = 3
 const TIMEOUT_MS = 10_000
+
+/**
+ * Exit codes are a small contract with the `publish` chain in package.json.
+ * "Nothing to do" gets its own code rather than sharing one with failures, so
+ * the chain can treat it as the success it is without also swallowing a genuine
+ * error (a crashed check and an already-published version must not look alike).
+ */
+const EXIT_PUBLISH = 0
+const EXIT_NOTHING_TO_DO = 1
+const EXIT_INDETERMINATE = 2
 
 interface PackageInfo {
   dir: string
@@ -170,7 +202,7 @@ async function main(): Promise<number> {
 
   if (candidates.length === 0) {
     console.error('No publishable packages found under packages/')
-    return 1
+    return EXIT_INDETERMINATE
   }
 
   const versions = new Set(candidates.map((pkg) => pkg.version))
@@ -178,7 +210,7 @@ async function main(): Promise<number> {
     console.error(
       `Expected every package on one version (see check-version-drift), found: ${[...versions].join(', ')}`
     )
-    return 1
+    return EXIT_INDETERMINATE
   }
 
   const probe = candidates[0]
@@ -186,15 +218,22 @@ async function main(): Promise<number> {
   const exists = await versionExists(probe.name, version)
   report(`Checking ${probe.name}@${version}: ${exists ? 'published' : 'not found'}`)
 
+  // `should_publish` is the verdict the publish chain branches on. Note this is
+  // deliberately not named `published`: it answers "is there work left to do",
+  // which is the inverse of "is the version on the registry".
   if (exists) {
     report(`All packages are already at ${version} on npm — nothing to publish.`)
-    setGithubOutput('published', 'true')
-    return 0
+    setGithubOutput('check_ran', 'true')
+    setGithubOutput('should_publish', 'false')
+    // A deliberate skip, on its own exit code so the chain can never confuse it
+    // with a failure — that matters when the chain has no flag file to read.
+    return EXIT_NOTHING_TO_DO
   }
 
   report(`${probe.name}@${version} is not on npm yet — proceeding with publish.`)
-  setGithubOutput('published', 'false')
-  return process.env.GITHUB_OUTPUT ? 1 : 0
+  setGithubOutput('check_ran', 'true')
+  setGithubOutput('should_publish', 'true')
+  return EXIT_PUBLISH
 }
 
 main()
@@ -203,5 +242,5 @@ main()
   })
   .catch((error: unknown) => {
     console.error(error instanceof Error ? error.message : error)
-    process.exitCode = 1
+    process.exitCode = EXIT_INDETERMINATE
   })
