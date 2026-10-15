@@ -140,6 +140,11 @@ jobs:
           tags_to_push=()
           flutter_tag_pushed=false
 
+          # actions/checkout does not fetch tags, but the ancestry check below
+          # needs their commit objects. History is complete (fetch-depth: 0 on
+          # the checkout above), so --force only ever rewrites tags.
+          git fetch --tags --force --quiet origin
+
           for tag in "v$VERSION" "android/v$VERSION" "flutter/v$VERSION" "ios/v$VERSION"; do
             remote_ref=$(git ls-remote origin "refs/tags/$tag" "refs/tags/$tag^{}")
             # Prefer the peeled commit SHA (^{}) for annotated tags; fall back to the
@@ -150,12 +155,26 @@ jobs:
             fi
 
             if [ -n "$REMOTE_SHA" ]; then
-              if [ "$REMOTE_SHA" != "$HEAD_SHA" ]; then
-                echo "ERROR: Tag $tag exists on origin at $REMOTE_SHA but HEAD is $HEAD_SHA — aborting"
-                exit 1
+              if [ "$REMOTE_SHA" = "$HEAD_SHA" ]; then
+                echo "Tag $tag already exists on origin at correct commit, skipping"
+                continue
               fi
-              echo "Tag $tag already exists on origin at correct commit, skipping"
-              continue
+
+              # The tag points at an ancestor of HEAD. That is the normal shape
+              # when a release is re-run or recovered after its release commit
+              # has fallen behind main: the tag still marks the commit this
+              # version was built from, so re-pointing it would be wrong. Keep it
+              # and let the publishing jobs run from the version files.
+              #
+              # Only a tag on a diverged commit is ambiguous — its content is not
+              # part of this version's history, so nothing can be assumed.
+              if git merge-base --is-ancestor "$REMOTE_SHA" HEAD; then
+                echo "Tag $tag exists on origin at $REMOTE_SHA, an ancestor of HEAD — keeping it"
+                continue
+              fi
+
+              echo "ERROR: Tag $tag exists on origin at $REMOTE_SHA, which is not an ancestor of HEAD ($HEAD_SHA) — aborting"
+              exit 1
             fi
 
             # Tag missing on origin — force-create local tag at HEAD (overwrites any stale local tag)
