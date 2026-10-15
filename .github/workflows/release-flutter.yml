@@ -16,6 +16,11 @@ jobs:
   publish-flutter:
     name: Publish Flutter
     runs-on: ubuntu-latest
+    # Must match the environment configured for automated publishing on pub.dev
+    # (https://pub.dev/packages/quiltt_connector/admin). When pub.dev requires an
+    # environment, the name is reflected in the OIDC token and publishing is
+    # rejected unless the job declares it. The name here is 'pub-dev'.
+    environment: pub-dev
     permissions:
       id-token: write
       contents: write
@@ -30,10 +35,10 @@ jobs:
       # pub.dev trusted-publishing step, for reasons that look unrelated.
       - name: Verify release token is configured
         env:
-          RELEASE_TOKEN: ${{ secrets.QUILTTY_RELEASE_GITHUB_TOKEN }}
+          RELEASE_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}
         run: |
           if [ -z "$RELEASE_TOKEN" ]; then
-            echo "ERROR: the QUILTTY_RELEASE_GITHUB_TOKEN repository secret is not set."
+            echo "ERROR: the RELEASE_GITHUB_TOKEN repository secret is not set."
             echo "ERROR: this run must check out the tag with the release PAT; GITHUB_TOKEN"
             echo "ERROR: is not a substitute for the identity pub.dev's trusted publishing expects."
             echo "ERROR: create the secret (classic PAT with 'repo' + 'workflow' scopes) and re-run."
@@ -49,7 +54,7 @@ jobs:
             -H "authorization: Bearer $RELEASE_TOKEN" \
             https://api.github.com/user)
           if [ "$STATUS" != "200" ]; then
-            echo "ERROR: QUILTTY_RELEASE_GITHUB_TOKEN was not accepted by GitHub (HTTP $STATUS) — it is invalid or expired."
+            echo "ERROR: RELEASE_GITHUB_TOKEN was not accepted by GitHub (HTTP $STATUS) — it is invalid or expired."
             exit 1
           fi
           echo "Release token is present and accepted by GitHub."
@@ -57,7 +62,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.ref }}
-          token: ${{ secrets.QUILTTY_RELEASE_GITHUB_TOKEN }}
+          token: ${{ secrets.RELEASE_GITHUB_TOKEN }}
 
       - name: Validate ref is a flutter/v* tag
         run: |
