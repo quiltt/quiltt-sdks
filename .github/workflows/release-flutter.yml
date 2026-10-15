@@ -34,6 +34,10 @@ jobs:
       # would run with the wrong identity and only fall over later, at the
       # pub.dev trusted-publishing step, for reasons that look unrelated.
       - name: Verify release token is configured
+        # This step runs before checkout, so the job's `packages/flutter`
+        # working directory does not exist yet and bash would fail to start.
+        # Pin this step to the repo root.
+        working-directory: .
         env:
           RELEASE_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}
         run: |
