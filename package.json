@@ -19,7 +19,7 @@
     "clean": "turbo run clean",
     "dev": "turbo run dev --parallel",
     "lint": "turbo run lint",
-    "publish": "pnpm run check:published && pnpm run build:packages && npx changeset tag && pnpm -r publish --no-git-checks --filter=./packages/**",
+    "publish": "pnpm run check:published || { [ $? -eq 1 ] && { echo 'Already on npm - nothing to publish.'; exit 0; }; echo 'check:published could not determine the registry state - see the log above.'; exit 1; } && pnpm run build:packages && npx changeset tag && pnpm -r publish --no-git-checks --filter=./packages/**",
     "test": "turbo run test",
     "test:unit": "vitest run --coverage",
     "test:e2e": "turbo run test:component",

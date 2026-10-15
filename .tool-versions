@@ -1,10 +1,14 @@
 # mise tool versions — mirrors CI pins and local version files
 
+<!-- 
+
 # Sources: .nvmrc, .ruby-version, package.json#packageManager, AGENTS.md
 
 # .github/actions/setup-flutter/action.yml, .github/workflows/*.yml
 
-# Consistency enforced by scripts/check-tool-versions.mjs (`pnpm check:tool-versions`)
+# Consistency enforced by scripts/check-tool-versions.mjs (`pnpm check:tool-versions`) 
+
+-->
 
 node     24.14.0
 pnpm     12.11.2
@@ -12,6 +16,8 @@ ruby     3.4.7
 java     temurin-21
 flutter  3.41.6
 swiftlint 0.65.1
+
+<!-- 
 
 # ── Not managed by mise/.tool_versions (managed elsewhere) ──────────────────────────────
 
@@ -25,4 +31,6 @@ swiftlint 0.65.1
 
 # Gradle           — use each project's `./gradlew`; the wrapper is authoritative (Android 8.12.1, Flutter example 8.14)
 
-# Maestro 2.10.0   — pinned via MAESTRO_VERSION in tests-integration-react-native.yml
+# Maestro 2.10.0   — pinned via MAESTRO_VERSION in tests-integration-react-native.yml 
+
+-->
