@@ -16,11 +16,12 @@ jobs:
   publish-flutter:
     name: Publish Flutter
     runs-on: ubuntu-latest
-    # Must match the environment configured for automated publishing on pub.dev
-    # (https://pub.dev/packages/quiltt_connector/admin). When pub.dev requires an
-    # environment, the name is reflected in the OIDC token and publishing is
-    # rejected unless the job declares it. The name here is 'pub-dev'.
-    environment: pub-dev
+    # No `environment:` on purpose. pub.dev only requires one when its automated
+    # publishing config sets "Require GitHub Actions environment" — that is
+    # currently unchecked, so declaring one would couple this workflow to a
+    # setting that does nothing for us (the pub-dev environment carries no
+    # secrets and no protection rules). If the requirement is ever turned on,
+    # add `environment: <name>` here, matching the name configured on pub.dev.
     permissions:
       id-token: write
       contents: write

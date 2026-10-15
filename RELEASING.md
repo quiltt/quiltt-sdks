@@ -169,7 +169,7 @@ Triggered automatically by the `@quiltt/core@*` tag pushed by the JS release:
    - Flutter: triggered separately by the `flutter/v*` tag via `release-flutter.yml` — analyzes, validates, publishes to pub.dev, creates `flutter/v*` GitHub release
    - iOS: builds and tests the root `Package.swift`, then creates `ios/v*` GitHub release (iOS is distributed via SPM using the SemVer `v*` tag)
 
-Flutter publish auth: automated publishing uses GitHub Actions OIDC (`id-token: write`) and `dart-lang/setup-dart`. The Flutter job runs in `release-flutter.yml` under the `pub-dev` environment, which is required for OIDC trusted publishing on pub.dev.
+Flutter publish auth: automated publishing uses GitHub Actions OIDC (`id-token: write`) and `dart-lang/setup-dart`. The Flutter job in `release-flutter.yml` deliberately declares no `environment:` — pub.dev only checks that claim when its automated publishing config sets "Require GitHub Actions environment", which is currently unchecked. If that requirement is enabled on pub.dev, add `environment: <name>` to the `publish-flutter` job using the same name configured there.
 
 #### Swift Package Index (Optional)
 
@@ -306,19 +306,25 @@ If there are version conflicts:
 #### Flutter Release
 
 No *package-specific* secrets required. Publishing uses GitHub Actions OIDC —
-pub.dev is configured to trust the `quiltt/quiltt-sdks` repository with the
-`pub-dev` environment.
+pub.dev is configured to trust the `quiltt/quiltt-sdks` repository.
 
-Two constraints come with that:
+One configuration detail matters:
 
-- The `publish-flutter` job must declare `environment: pub-dev`, matching the
-  environment name configured on pub.dev. The name is reflected in the OIDC
-  token, so a mismatch (or a missing declaration) makes pub.dev reject the
-  publish even though the workflow itself succeeds up to that point.
+- pub.dev's automated publishing offers an optional "Require GitHub Actions
+  environment" setting. While it is **unchecked**, the workflow must **not**
+  declare `environment:` (declaring one is harmless but couples the workflow to a
+  setting that does nothing). If it is ever checked, the `publish-flutter` job
+  must declare `environment: <name>`, because the name is reflected in the OIDC
+  token and pub.dev then rejects any run whose claim does not match.
+
+Two constraints always apply:
+
 - The workflow only runs for a **tag push** of `flutter/v*`. pub.dev rejects
   automated publishing from runs not triggered by a tag push, so
   `workflow_dispatch` cannot be used as a fallback. Re-pushing a tag that already
   exists at the same commit fires no event; the tag must be recreated.
+- The workflow is read from the **tagged commit**, not from `main`. A fix to
+  `release-flutter.yml` has no effect on a tag that points at an older commit.
 
 The tag is pushed by `release-mobile.yml` using `RELEASE_GITHUB_TOKEN`, which is
 therefore also required for Flutter releases.
