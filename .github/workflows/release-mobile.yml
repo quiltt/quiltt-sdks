@@ -19,6 +19,37 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
+      # Fail before anything is written. An unset or expired secret is
+      # indistinguishable from a working one at runtime: it expands to the empty
+      # string, and every push below then quietly falls back to GITHUB_TOKEN,
+      # which cannot trigger release-flutter.yml. That turned a missing secret
+      # into a release that looked healthy while pub.dev stayed a version behind.
+      - name: Verify release token is configured
+        env:
+          RELEASE_TOKEN: ${{ secrets.QUILTTY_RELEASE_GITHUB_TOKEN }}
+        run: |
+          if [ -z "$RELEASE_TOKEN" ]; then
+            echo "ERROR: the QUILTTY_RELEASE_GITHUB_TOKEN repository secret is not set."
+            echo "ERROR: every git write in this workflow would fall back to GITHUB_TOKEN,"
+            echo "ERROR: which cannot trigger release-flutter.yml, so Flutter would never publish."
+            echo "ERROR: create the secret (classic PAT with 'repo' + 'workflow' scopes) and re-run."
+            exit 1
+          fi
+
+          # /user is the cheapest endpoint that actually authenticates the token:
+          # an invalid, expired or empty one comes back 401. (Auth-free endpoints
+          # answer 200 to anything, so they cannot tell a working secret from a
+          # missing one.) Only the status code is read, never the response body,
+          # and the token itself stays out of the log either way.
+          STATUS=$(curl -s -o /dev/null -w '%{http_code}' \
+            -H "authorization: Bearer $RELEASE_TOKEN" \
+            https://api.github.com/user)
+          if [ "$STATUS" != "200" ]; then
+            echo "ERROR: QUILTTY_RELEASE_GITHUB_TOKEN was not accepted by GitHub (HTTP $STATUS) — it is invalid or expired."
+            exit 1
+          fi
+          echo "Release token is present and accepted by GitHub."
+
       - name: Extract version from tag
         id: version
         run: |
