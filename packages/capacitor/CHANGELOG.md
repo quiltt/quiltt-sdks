@@ -1,5 +1,13 @@
 # @quiltt/capacitor
 
+## 6.1.6
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @quiltt/react@6.1.6
+  - @quiltt/vue@6.1.6
+
 ## 6.1.5
 
 ### Patch Changes

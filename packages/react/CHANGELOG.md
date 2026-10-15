@@ -1,5 +1,12 @@
 # @quiltt/react
 
+## 6.1.6
+
+### Patch Changes
+
+- Updated dependencies [[`b9a7a9d`](https://github.com/quiltt/quiltt-sdks/commit/b9a7a9d1f5a16d7530f0389c7c3cad083c2f0167)]:
+  - @quiltt/core@6.1.6
+
 ## 6.1.5
 
 ### Patch Changes
