@@ -213,6 +213,53 @@ const App = () => {
 export default App
 ```
 
+### useSession
+
+The lower-level session hook `useQuilttSession` is built on. It takes an optional storage key
+(defaults to `session`) and returns the session, a setter, a controller, and whether the session has
+been read yet:
+
+```tsx
+import { useSession } from '@quiltt/react'
+
+const [session, setSession, controller, restored] = useSession()
+```
+
+`useQuilttSession` returns the same `restored` flag alongside the session. It is `false` only before
+the hook's first client commit — the render that has to match what the server rendered, which could
+not read storage. An empty `session` while `restored` is `false` does not mean signed out:
+
+```tsx
+const { session, restored } = useQuilttSession()
+
+useEffect(() => {
+  if (restored && !session) router.push('/login')
+}, [restored, session])
+```
+
+Without the gate, a signed-in user whose session was stored would be redirected during hydration.
+
+`useQuilttSession` covers almost every case. The controller matters when you resume work after an
+`await` — a token validation, a refresh — and the session may have changed in the meantime:
+
+```tsx
+const at = controller.snapshot()          // the slot's token and clear count
+const valid = await validate(token)
+if (valid && !controller.adopt(token, at)) {
+  // The user signed out or signed in as someone else while we were waiting; the token was dropped.
+}
+```
+
+`adopt(token, since)` saves the token only if the slot has not changed since `snapshot()`, and
+reports whether the session now holds it. Reading the slot through the controller — rather than
+component state — is what makes this correct when the component has unmounted, and pairing it with
+the setter means you cannot read one session and write another.
+
+`useImportSession` accepts a controller as its optional fifth argument; `useQuilttSession`'s
+`importSession` already does this for you. Without a controller it builds one from the setter you
+pass, and the setter from `useSession` reports the storage key it writes, so the fallback watches the
+slot the caller actually writes — signing out of that slot still cancels a pending import.
+
 ## Typescript support
 
 `@quiltt/react` is written in TypeScript and ships with complete type definitions. Since it re-exports all functionality from `@quiltt/core`, you have access to all core types as well, including utility types, API types, and authentication types.

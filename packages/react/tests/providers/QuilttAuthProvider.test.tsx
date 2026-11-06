@@ -46,6 +46,10 @@ vi.mock('@quiltt/core', () => {
     InMemoryCache: MockInMemoryCache,
     TerminatingLink: MockTerminatingLink,
     createVersionLink: vi.fn(() => new MockApolloLink()),
+    // The provider reads the stored session during render to tell a mount-time restore apart from a
+    // session change, so it needs the store even here.
+    GlobalStorage: { get: () => undefined },
+    SESSION_STORAGE_KEY: 'session',
   }
 })
 

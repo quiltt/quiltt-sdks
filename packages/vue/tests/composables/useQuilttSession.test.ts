@@ -1,6 +1,6 @@
 import { createApp, ref } from 'vue'
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   pingMock: vi.fn(),
@@ -25,8 +25,21 @@ vi.mock('@quiltt/core', async () => {
   }
 })
 
+import { GlobalStorage, markSessionCleared } from '@quiltt/core'
+
 import { useQuilttSession } from '@/composables/useQuilttSession'
 import { QuilttClientIdKey, QuilttSessionKey, QuilttSetSessionKey } from '@/plugin/keys'
+
+/**
+ * Stand-in for the plugin's `setSession`. It writes the slot `adopt` reads back — without a provided
+ * controller the composable uses the shared one — and mirrors into the injected ref as the real
+ * setter does.
+ */
+const createSetSession = (sessionRef: { value: unknown }) =>
+  vi.fn((token: string | null) => {
+    GlobalStorage.set('session', token)
+    sessionRef.value = token ? { token } : null
+  })
 
 const createToken = (expOffsetSeconds = 3600, eid = 'entity-id') => {
   const now = Math.floor(Date.now() / 1000)
@@ -86,6 +99,12 @@ const mountComposable = <T>(factory: () => T, provide: Array<[symbol, unknown]>)
 }
 
 describe('useQuilttSession', () => {
+  beforeEach(() => {
+    // The composable falls back to the shared slot, and its stand-in setter writes it, so a slot left
+    // behind by the previous test would be read back here.
+    GlobalStorage.set('session', null)
+  })
+
   afterEach(() => {
     mocks.pingMock.mockReset()
     mocks.identifyMock.mockReset()
@@ -97,7 +116,7 @@ describe('useQuilttSession', () => {
     mocks.pingMock.mockResolvedValue({ status: 200 } as any)
 
     const sessionRef = ref(null)
-    const setSession = vi.fn()
+    const setSession = createSetSession(sessionRef)
 
     const { result, unmount } = mountComposable(
       () => useQuilttSession('env_1'),
@@ -115,6 +134,62 @@ describe('useQuilttSession', () => {
     expect(mocks.pingMock).toHaveBeenCalledWith(token)
     expect(setSession).toHaveBeenCalledWith(token)
 
+    unmount()
+  })
+
+  it('does not adopt a token that was signed out while the ping was in flight', async () => {
+    const sessionRef = ref(null)
+    const setSession = vi.fn()
+    const token = createToken(3600, 'env_1')
+
+    const { result, unmount } = mountComposable(
+      () => useQuilttSession('env_1'),
+      [
+        [QuilttSessionKey as unknown as symbol, sessionRef],
+        [QuilttSetSessionKey as unknown as symbol, setSession],
+        [QuilttClientIdKey as unknown as symbol, ref('cid_test')],
+      ]
+    )
+
+    // The caller signs out while the request is in flight.
+    mocks.pingMock.mockImplementation(async () => {
+      sessionRef.value = null
+      markSessionCleared()
+      return { status: 200 } as any
+    })
+
+    expect(await result.importSession(token)).toBe(false)
+    expect(setSession).not.toHaveBeenCalled()
+
+    unmount()
+  })
+
+  it('syncs this app when the slot already holds the token', async () => {
+    const token = createToken(3600, 'env_1')
+    // Another writer already adopted this token into the shared slot, while this app's ref still
+    // shows nothing. Reporting success without updating the ref would leave the user signed out.
+    GlobalStorage.set('session', token)
+    const sessionRef = ref(null)
+    const setSession = vi.fn((next: string | null) => {
+      sessionRef.value = next as never
+    })
+
+    const { result, unmount } = mountComposable(
+      () => useQuilttSession('env_1'),
+      [
+        [QuilttSessionKey as unknown as symbol, sessionRef],
+        [QuilttSetSessionKey as unknown as symbol, setSession],
+        [QuilttClientIdKey as unknown as symbol, ref('cid_test')],
+      ]
+    )
+
+    mocks.pingMock.mockResolvedValue({ status: 200 } as any)
+
+    expect(await result.importSession(token)).toBe(true)
+    expect(setSession).toHaveBeenCalledWith(token)
+    expect(sessionRef.value).toBe(token)
+
+    GlobalStorage.set('session', null)
     unmount()
   })
 
@@ -356,7 +431,7 @@ describe('useQuilttSession', () => {
     // Session is pre-populated (as if restored from localStorage) but importSession
     // has never been called for this token, so validatedToken is not set.
     const sessionRef = ref({ token } as any)
-    const setSession = vi.fn()
+    const setSession = createSetSession(sessionRef)
 
     const { result, unmount } = mountComposable(
       () => useQuilttSession(),
@@ -381,9 +456,7 @@ describe('useQuilttSession', () => {
 
     const token = createToken(3600, 'env_1')
     const sessionRef = ref(null as any)
-    const setSession = vi.fn((t: string | null) => {
-      sessionRef.value = t ? { token: t } : null
-    })
+    const setSession = createSetSession(sessionRef)
 
     const { result, unmount } = mountComposable(
       () => useQuilttSession(),
@@ -412,9 +485,7 @@ describe('useQuilttSession', () => {
 
     const token = createToken(3600, 'env_1')
     const sessionRef = ref(null as any)
-    const setSession = vi.fn((t: string | null) => {
-      sessionRef.value = t ? { token: t } : null
-    })
+    const setSession = createSetSession(sessionRef)
 
     const { result, unmount } = mountComposable(
       () => useQuilttSession(),
@@ -444,9 +515,7 @@ describe('useQuilttSession', () => {
 
     const token = createToken(3600, 'env_1')
     const sessionRef = ref(null as any)
-    const setSession = vi.fn((t: string | null) => {
-      sessionRef.value = t ? { token: t } : null
-    })
+    const setSession = createSetSession(sessionRef)
 
     const { result, unmount } = mountComposable(
       () => useQuilttSession(),
@@ -479,9 +548,7 @@ describe('useQuilttSession', () => {
 
     const token = createToken(3600, 'env_1')
     const sessionRef = ref(null as any)
-    const setSession = vi.fn((t: string | null) => {
-      sessionRef.value = t ? { token: t } : null
-    })
+    const setSession = createSetSession(sessionRef)
 
     // First composable instance: validated for env_1
     const { result: result1, unmount: unmount1 } = mountComposable(
@@ -523,9 +590,7 @@ describe('useQuilttSession', () => {
 
     const token = createToken(3600, 'env_1')
     const sessionRef = ref(null as any)
-    const setSession = vi.fn((t: string | null) => {
-      sessionRef.value = t ? { token: t } : null
-    })
+    const setSession = createSetSession(sessionRef)
 
     const { result, unmount } = mountComposable(
       () => useQuilttSession(),
@@ -548,7 +613,7 @@ describe('useQuilttSession', () => {
   it('returns sessionRef truthiness when token is empty string', async () => {
     const token = createToken(3600, 'env_1')
     const sessionRef = ref({ token } as any)
-    const setSession = vi.fn()
+    const setSession = createSetSession(sessionRef)
 
     const { result, unmount } = mountComposable(
       () => useQuilttSession(),

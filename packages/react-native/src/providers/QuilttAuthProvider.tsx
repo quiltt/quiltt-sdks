@@ -13,10 +13,8 @@ export type QuilttAuthProviderProps = ReactQuilttAuthProviderProps
  * React Native-specific QuilttAuthProvider that injects platform information
  * into the GraphQL client's Quiltt-SDK-Agent header.
  *
- * If a token is provided, will validate the token against the api and then import
- * it into trusted storage. While this process is happening, the component is put
- * into a loading state and the children are not rendered to prevent race conditions
- * from triggering within the transitionary state.
+ * A `token` passed in is validated against the API and adopted into the session in an effect, so
+ * children render immediately — the session arrives a render later. @see QuilttAuthProvider
  */
 export const QuilttAuthProvider: FC<QuilttAuthProviderProps> = ({
   graphqlClient,

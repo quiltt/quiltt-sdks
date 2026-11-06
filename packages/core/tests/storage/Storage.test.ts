@@ -15,6 +15,7 @@ const createMockLocalStorage = () => {
       subscribers[key].push(callback)
     }),
     unsubscribe: vi.fn(),
+    has: vi.fn((key: string) => key in store),
     _triggerStorageEvent: (key: string, value: any) => {
       subscribers[key]?.forEach((callback) => {
         callback(value)
@@ -22,6 +23,11 @@ const createMockLocalStorage = () => {
     },
     _getStore: () => ({ ...store }),
     _getSubscribers: () => ({ ...subscribers }),
+    _clearStore: () => {
+      Object.keys(store).forEach((key) => {
+        delete store[key]
+      })
+    },
   }
 }
 
@@ -34,6 +40,7 @@ const createMockMemoryStorage = () => {
     }),
     subscribe: vi.fn(),
     unsubscribe: vi.fn(),
+    has: vi.fn((key: string) => key in store),
     _setStore: (key: string, value: any) => {
       store[key] = value
     },
@@ -62,9 +69,11 @@ describe('Storage', () => {
         set = this.instance.set
         subscribe = this.instance.subscribe
         unsubscribe = this.instance.unsubscribe
+        has = this.instance.has
         _triggerStorageEvent = this.instance._triggerStorageEvent
         _getStore = this.instance._getStore
         _getSubscribers = this.instance._getSubscribers
+        _clearStore = this.instance._clearStore
       }
       return {
         LocalStorage: MockLocalStorage,
@@ -78,6 +87,7 @@ describe('Storage', () => {
         set = this.instance.set
         subscribe = this.instance.subscribe
         unsubscribe = this.instance.unsubscribe
+        has = this.instance.has
         _setStore = this.instance._setStore
         _clearStore = this.instance._clearStore
       }
@@ -95,11 +105,9 @@ describe('Storage', () => {
     mockLocalStore = (storage as any).localStore
     mockMemoryStore = (storage as any).memoryStore
 
-    // clear between tests
+    // `_getStore()` returns a copy, so clearing through it did nothing; each store clears itself.
     mockMemoryStore._clearStore()
-    Object.keys(mockLocalStore._getStore()).forEach((key) => {
-      delete mockLocalStore._getStore()[key]
-    })
+    mockLocalStore._clearStore()
   })
 
   describe('basic functionality', () => {
@@ -142,6 +150,29 @@ describe('Storage', () => {
       expect(mockLocalStore.set).toHaveBeenCalledWith(testKey, newValue)
       expect(mockMemoryStore.set).toHaveBeenCalledWith(testKey, newValue)
       expect(observer).toHaveBeenCalledWith(newValue)
+    })
+  })
+
+  describe('key presence', () => {
+    it('should report a key present when memory storage holds it', () => {
+      mockMemoryStore._setStore('test', null)
+
+      expect(storage.has('test')).toBe(true)
+    })
+
+    it('should fall back to localStorage presence when memory has no entry', () => {
+      mockMemoryStore.has.mockReturnValue(false)
+      mockLocalStore.has.mockReturnValue(true)
+
+      expect(storage.has('test')).toBe(true)
+      expect(mockLocalStore.has).toHaveBeenCalledWith('test')
+    })
+
+    it('should report a key absent when neither store holds it', () => {
+      mockMemoryStore.has.mockReturnValue(false)
+      mockLocalStore.has.mockReturnValue(false)
+
+      expect(storage.has('test')).toBe(false)
     })
   })
 
@@ -317,7 +348,6 @@ describe('Storage', () => {
 
   describe('GlobalStorage singleton', () => {
     it('should provide a singleton instance', async () => {
-      expect(GlobalStorage).toBeDefined()
       expect(GlobalStorage).toBeInstanceOf(Storage)
 
       // Import the same module again using the same path used for mocking

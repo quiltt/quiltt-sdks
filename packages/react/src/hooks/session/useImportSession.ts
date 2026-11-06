@@ -1,11 +1,13 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 
-import type { AuthAPI, Maybe, PrivateClaims, QuilttJWT } from '@quiltt/core'
-import { JsonWebTokenParse } from '@quiltt/core'
+import type { AuthAPI, Maybe, PrivateClaims, QuilttJWT, SessionController } from '@quiltt/core'
+import { createSessionController, JsonWebTokenParse, SESSION_STORAGE_KEY } from '@quiltt/core'
 
-import type { SetSession } from '@/hooks/useSession'
+import type { SessionSlotSetter, SetSession } from '@/hooks/useSession'
 
 export type ImportSession = (token: string) => Promise<boolean>
+
+const isSlotSetter = (setter: SetSession): setter is SessionSlotSetter => 'storageKey' in setter
 
 // A token the server rejected with 401 is dead for the lifetime of that token,
 // not the lifetime of a hook. `QuilttAuthProvider` remounts (route changes,
@@ -29,13 +31,34 @@ type UseImportSession = (
   auth: AuthAPI,
   session: Maybe<QuilttJWT> | undefined,
   setSession: SetSession,
-  environmentId?: string
+  environmentId?: string,
+  /**
+   * Ties `setSession` to the slot it writes; pass the controller from `useSession`. Without it, the
+   * slot the setter reports is used, falling back to the default session slot.
+   */
+  controller?: SessionController
 ) => ImportSession
 
 /**
  * Optionally Accepts environmentId to validate session is from with your desired environment
  */
-export const useImportSession: UseImportSession = (auth, session, setSession, environmentId) => {
+export const useImportSession: UseImportSession = (
+  auth,
+  session,
+  setSession,
+  environmentId,
+  controller
+) => {
+  const fallbackController = useMemo(
+    () =>
+      createSessionController(
+        setSession,
+        isSlotSetter(setSession) ? setSession.storageKey : SESSION_STORAGE_KEY
+      ),
+    [setSession]
+  )
+  const sessionSlot = controller ?? fallbackController
+
   // Tracks tokens that completed the full import path (env check + server ping).
   // Tokens restored from storage at startup are NOT in this ref and must always
   // go through full validation before being used.
@@ -66,13 +89,29 @@ export const useImportSession: UseImportSession = (auth, session, setSession, en
       // Is this token within the expected environment?
       if (environmentId && jwt.claims.eid !== environmentId) return false
 
+      // Snapshot the slot before the ping: the request is awaited, so the session can change
+      // underneath it, and a sign-out (or a different sign-in) has to win over this late response.
+      // Otherwise a token imported before a sign-out is written back afterwards and silently
+      // restores the session that was just ended. The snapshot comes from storage rather than the
+      // hook, because the calling component may have unmounted by then.
+      const sessionAtCall = sessionSlot.snapshot()
+
       // Is this token active?
       const response = await auth.ping(token)
       switch (response.status) {
-        case 200:
-          setSession(token)
+        case 200: {
+          // Reported as not imported when the slot moved on, since the token was not adopted.
+          if (!sessionSlot.adopt(token, sessionAtCall)) return false
+
+          // `adopt` writes through this same setter when the slot it read did not already hold the
+          // token. It returns `true` without writing when the token was already there — and for an
+          // untagged setter that read is the default slot, which may not be the caller's — so the
+          // caller's setter still has to run, exactly once either way.
+          if (!isSlotSetter(setSession) && sessionAtCall.token === token) setSession(token)
+
           validatedTokenRef.current = token
           return true
+        }
 
         case 401:
           rememberRejectedToken(token)
@@ -84,7 +123,7 @@ export const useImportSession: UseImportSession = (auth, session, setSession, en
           throw new Error(`AuthAPI.ping: Unexpected response status ${response.status}`)
       }
     },
-    [auth, session, setSession, environmentId]
+    [auth, session, setSession, environmentId, sessionSlot]
   )
 
   return importSession

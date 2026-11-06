@@ -1,11 +1,12 @@
 import type { MockedFunction } from 'vitest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { ApolloLink } from '@apollo/client/core'
+import { ApolloLink } from '@apollo/client/core'
 import { GraphQLError } from 'graphql'
 import { Observable } from 'rxjs'
 
 import { AuthLink } from '@/api/graphql/links/AuthLink'
+import { JsonWebTokenParse } from '@/auth/json-web-token'
 import { GlobalStorage } from '@/storage'
 
 // Mock GlobalStorage
@@ -147,14 +148,14 @@ describe('AuthLink', () => {
       })
     })
 
-    it('should call GlobalStorage.get exactly once per request', () => {
-      const mockToken = 'test-token'
-      mockGlobalStorage.get.mockReturnValue(mockToken)
+    it('should authorize with the token the store holds when the request is made', () => {
+      mockGlobalStorage.get.mockReturnValue('first-token')
 
       authLink.request(mockOperation, mockForward)
 
-      expect(mockGlobalStorage.get).toHaveBeenCalledTimes(1)
-      expect(mockGlobalStorage.get).toHaveBeenCalledWith('session')
+      const contextFunction = mockSetContext.mock.calls[0][0] as (context: any) => any
+
+      expect(contextFunction({ headers: {} }).headers.authorization).toContain('first-token')
     })
   })
 
@@ -374,7 +375,7 @@ describe('AuthLink', () => {
   })
 
   describe('error handling', () => {
-    it('should handle storage errors gracefully', () => {
+    it('should propagate an error thrown by the store', () => {
       mockGlobalStorage.get.mockImplementation(() => {
         throw new Error('Storage not available')
       })
@@ -481,8 +482,11 @@ describe('AuthLink', () => {
 
       expect(result).not.toBeNull()
       expect(mockGlobalStorage.set).not.toHaveBeenCalled()
-      expect(mockSetContext).toHaveBeenCalled()
       expect(mockForward).toHaveBeenCalled()
+
+      const contextFunction = mockSetContext.mock.calls[0][0] as (context: any) => any
+
+      expect(contextFunction({ headers: {} }).headers.authorization).toContain(mockToken)
     })
 
     it('should allow tokens without exp claim', async () => {
@@ -513,15 +517,20 @@ describe('AuthLink', () => {
 
       expect(result).not.toBeNull()
       expect(mockGlobalStorage.set).not.toHaveBeenCalled()
-      expect(mockSetContext).toHaveBeenCalled()
       expect(mockForward).toHaveBeenCalled()
+
+      const contextFunction = mockSetContext.mock.calls[0][0] as (context: any) => any
+
+      expect(contextFunction({ headers: {} }).headers.authorization).toContain(mockToken)
     })
   })
 
   describe('inheritance and Apollo Link compatibility', () => {
-    it('should extend ApolloLink properly', () => {
-      expect(authLink).toBeInstanceOf(AuthLink)
-      expect(authLink.request).toBeInstanceOf(Function)
+    it('should be usable where Apollo expects a link', () => {
+      expect(authLink).toBeInstanceOf(ApolloLink)
+
+      // a link chain accepts it, which a stub of `request` alone would not imply
+      expect(() => ApolloLink.from([authLink])).not.toThrow()
     })
 
     it('should return the correct type from forward', () => {
@@ -538,6 +547,63 @@ describe('AuthLink', () => {
 
       expect(result).toBeInstanceOf(Observable)
       expect(mockForward).toHaveBeenCalledWith(mockOperation)
+    })
+  })
+
+  describe('with a session token source', () => {
+    it('reads the token from the source instead of the store', () => {
+      // The store holds nothing: on a server there is no shared slot to hold it.
+      mockGlobalStorage.get.mockReturnValue(undefined)
+
+      const source = { read: vi.fn().mockReturnValue('request-token'), clear: vi.fn() }
+      const link = new AuthLink(source)
+
+      link.request(mockOperation, mockForward)
+
+      const contextFunction = mockSetContext.mock.calls[0][0] as (context: any) => any
+      const result = contextFunction({ headers: {} })
+
+      expect(source.read).toHaveBeenCalled()
+      expect(result.headers.authorization).toContain('request-token')
+      expect(mockGlobalStorage.get).not.toHaveBeenCalled()
+      expect(mockForward).toHaveBeenCalledWith(mockOperation)
+    })
+
+    it('reports NO_TOKEN for an empty source even when the store holds a session', async () => {
+      // Falling back to the store would authenticate with another request's session.
+      mockGlobalStorage.get.mockReturnValue('stored-token')
+
+      const link = new AuthLink({ read: () => null })
+
+      await new Promise<void>((resolve, reject) => {
+        link.request(mockOperation, mockForward).subscribe({
+          error: (error) => {
+            try {
+              expect(error.extensions?.code).toBe('UNAUTHENTICATED')
+              expect(error.extensions?.reason).toBe('NO_TOKEN')
+              expect(mockForward).not.toHaveBeenCalled()
+              resolve()
+            } catch (e) {
+              reject(e)
+            }
+          },
+        })
+      })
+    })
+
+    it('drops an expired token through the source, leaving the store alone', () => {
+      mockGlobalStorage.get.mockReturnValue(undefined)
+      vi.mocked(JsonWebTokenParse).mockReturnValue({
+        claims: { exp: Math.floor(Date.now() / 1000) - 60 },
+      } as any)
+
+      const source = { read: vi.fn().mockReturnValue('expired-token'), clear: vi.fn() }
+      const link = new AuthLink(source)
+
+      link.request(mockOperation, mockForward)
+
+      expect(source.clear).toHaveBeenCalled()
+      expect(mockGlobalStorage.set).not.toHaveBeenCalled()
     })
   })
 })

@@ -81,6 +81,62 @@ describe('ActionCableLink', () => {
     })
   })
 
+  it('should authenticate the socket with the supplied session source, not the shared store', () => {
+    vi.mocked(GlobalStorage.get).mockReturnValue('shared_token')
+    vi.mocked(createConsumer).mockReturnValue({
+      subscriptions: { create: vi.fn() },
+    } as any)
+
+    const link = new ActionCableLink({ session: { read: () => 'request_token' } })
+    const dummyNextLink = (_operation: ApolloLink.Operation) =>
+      new Observable<ApolloLink.Result>((subscriber) => {
+        subscriber.next({})
+        subscriber.complete()
+      })
+    const mockQuery = gql`
+      {
+        mockField
+      }
+    `
+
+    link.request({ query: mockQuery } as ApolloLink.Operation, dummyNextLink)
+
+    expect(createConsumer).toHaveBeenCalledWith(expect.stringContaining('token=request_token'))
+    expect(GlobalStorage.get).not.toHaveBeenCalled()
+  })
+
+  it('should report no token when the supplied session source is empty', async () => {
+    vi.mocked(GlobalStorage.get).mockReturnValue('shared_token')
+
+    const link = new ActionCableLink({ session: { read: () => null } })
+    const dummyNextLink = (_operation: ApolloLink.Operation) =>
+      new Observable<ApolloLink.Result>((subscriber) => {
+        subscriber.next({})
+        subscriber.complete()
+      })
+    const mockQuery = gql`
+      {
+        mockField
+      }
+    `
+
+    const observable = link.request({ query: mockQuery } as ApolloLink.Operation, dummyNextLink)
+
+    await new Promise<void>((resolve, reject) => {
+      observable.subscribe({
+        error: (error) => {
+          try {
+            expect(error.extensions?.reason).toBe('NO_TOKEN')
+            expect(createConsumer).not.toHaveBeenCalled()
+            resolve()
+          } catch (e) {
+            reject(e)
+          }
+        },
+      })
+    })
+  })
+
   it('should create a consumer and subscription when a token is present', () => {
     const link = new ActionCableLink({})
     const dummyNextLink = (_operation: ApolloLink.Operation) =>

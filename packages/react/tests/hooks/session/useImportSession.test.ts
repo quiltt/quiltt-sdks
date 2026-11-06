@@ -1,11 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
 
-import type { AuthAPI, QuilttJWT } from '@quiltt/core'
-import { JsonWebTokenParse } from '@quiltt/core'
+import type { AuthAPI, Maybe, QuilttJWT } from '@quiltt/core'
+import { GlobalStorage, JsonWebTokenParse, SESSION_STORAGE_KEY } from '@quiltt/core'
 
 import { useImportSession } from '@/hooks/session/useImportSession'
 import type { SetSession } from '@/hooks/useSession'
+import { useSession } from '@/hooks/useSession'
 
 // Mock the JsonWebTokenParse function
 vi.mock('@quiltt/core', async () => {
@@ -53,7 +54,16 @@ describe('useImportSession', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockAuth = createMockAuthAPI()
-    mockSetSession = vi.fn() as SetSession
+    // Writes the slot the controller reads back, the way the real setter does.
+    const store = (next: unknown) =>
+      GlobalStorage.set(
+        SESSION_STORAGE_KEY,
+        typeof next === 'function'
+          ? (next as (previous: unknown) => string | null)(GlobalStorage.get(SESSION_STORAGE_KEY))
+          : (next as string | null)
+      )
+
+    mockSetSession = vi.fn(store) as unknown as SetSession
   })
 
   describe('with no token provided', () => {
@@ -95,6 +105,8 @@ describe('useImportSession', () => {
       // Use a session ref that we update to simulate setSession
       let currentSession: QuilttJWT | undefined
       const captureSetSession = vi.fn((token: unknown) => {
+        // `adopt` reads the slot back, so the stand-in has to store what it is given.
+        GlobalStorage.set(SESSION_STORAGE_KEY, token as string | null)
         if (token) currentSession = testJWT
       }) as unknown as SetSession
 
@@ -279,6 +291,37 @@ describe('useImportSession', () => {
 
       expect(imported).toBe(true)
       expect(mockAuth.ping).toHaveBeenCalledWith(testJWT.token)
+      expect(mockSetSession).toHaveBeenCalledWith(testJWT.token)
+    })
+  })
+
+  describe('with an untagged setter', () => {
+    // Without a controller the hook builds one from the setter, bound to the default slot; `adopt`
+    // therefore reads the default slot and writes through the caller's setter itself.
+    beforeEach(() => {
+      GlobalStorage.set(SESSION_STORAGE_KEY, null)
+    })
+
+    afterEach(() => {
+      GlobalStorage.set(SESSION_STORAGE_KEY, null)
+    })
+
+    it('calls the setter exactly once for a fresh import', async () => {
+      const testJWT = createTestJWT()
+
+      vi.mocked(JsonWebTokenParse).mockReturnValue(testJWT)
+      mockAuth.ping.mockResolvedValue({ status: 200, data: { token: testJWT.token } })
+
+      const { result } = renderHook(() =>
+        useImportSession(mockAuth as unknown as AuthAPI, undefined, mockSetSession)
+      )
+
+      const imported = await act(async () => result.current(testJWT.token))
+
+      expect(imported).toBe(true)
+      // `adopt` already wrote through this setter — a second call would fire it twice, and a caller
+      // that wraps its setter to announce a sign-in would announce the same session twice.
+      expect(mockSetSession).toHaveBeenCalledTimes(1)
       expect(mockSetSession).toHaveBeenCalledWith(testJWT.token)
     })
   })
@@ -487,6 +530,250 @@ describe('useImportSession', () => {
       })
 
       expect(imported).toBe(true)
+    })
+  })
+
+  describe('when the session changes while the token is being validated', () => {
+    const oldToken = 'header.old-token.signature'
+    const rotatedToken = 'header.rotated-token.signature'
+
+    beforeEach(() => {
+      GlobalStorage.set(SESSION_STORAGE_KEY, oldToken)
+    })
+
+    afterEach(() => {
+      GlobalStorage.set(SESSION_STORAGE_KEY, null)
+    })
+
+    const renderImport = (session = createTestJWT({ token: oldToken })) =>
+      renderHook(() => useImportSession(mockAuth as unknown as AuthAPI, session, mockSetSession))
+
+    it('adopts the token when the session it was validated against is still stored', async () => {
+      const rotated = createTestJWT({ token: rotatedToken })
+      vi.mocked(JsonWebTokenParse).mockReturnValue(rotated)
+      mockAuth.ping.mockResolvedValue({ status: 200, data: { token: rotatedToken } })
+
+      const { result } = renderImport()
+
+      const imported = await act(async () => result.current(rotatedToken))
+
+      expect(imported).toBe(true)
+      expect(mockSetSession).toHaveBeenCalledWith(rotatedToken)
+    })
+
+    it('does not adopt the token when the session was cleared during the ping', async () => {
+      const rotated = createTestJWT({ token: rotatedToken })
+      vi.mocked(JsonWebTokenParse).mockReturnValue(rotated)
+      mockAuth.ping.mockImplementation(async () => {
+        // The user signs out while this request is in flight
+        GlobalStorage.set(SESSION_STORAGE_KEY, null)
+        return { status: 200, data: { token: rotatedToken } }
+      })
+
+      const { result } = renderImport()
+
+      const imported = await act(async () => result.current(rotatedToken))
+
+      expect(imported).toBe(false)
+      expect(mockSetSession).not.toHaveBeenCalled()
+      expect(GlobalStorage.get(SESSION_STORAGE_KEY)).toBeNull()
+    })
+
+    it('does not adopt the token when a different session signed in during the ping', async () => {
+      const rotated = createTestJWT({ token: rotatedToken })
+      vi.mocked(JsonWebTokenParse).mockReturnValue(rotated)
+      mockAuth.ping.mockImplementation(async () => {
+        GlobalStorage.set(SESSION_STORAGE_KEY, 'header.other-user.signature')
+        return { status: 200, data: { token: rotatedToken } }
+      })
+
+      const { result } = renderImport()
+
+      const imported = await act(async () => result.current(rotatedToken))
+
+      expect(imported).toBe(false)
+      expect(mockSetSession).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('when no session is stored', () => {
+    const freshToken = 'header.fresh-login.signature'
+
+    // Mirrors the real parser: absent tokens pass through unchanged, tokens parse.
+    const parseLikeTheRealOne = (token: Maybe<string> | undefined) =>
+      token ? createTestJWT({ token }) : token
+
+    const renderSession = () =>
+      renderHook(() => {
+        const [session, setSession] = useSession()
+        const importSession = useImportSession(mockAuth as unknown as AuthAPI, session, setSession)
+        return { importSession, setSession }
+      })
+
+    beforeEach(() => {
+      vi.mocked(JsonWebTokenParse).mockImplementation(parseLikeTheRealOne as never)
+      GlobalStorage.set(SESSION_STORAGE_KEY, null)
+    })
+
+    afterEach(() => {
+      GlobalStorage.set(SESSION_STORAGE_KEY, null)
+    })
+
+    it('adopts the token when nothing signs out during the ping', async () => {
+      mockAuth.ping.mockResolvedValue({ status: 200, data: { token: freshToken } })
+
+      const { result } = renderSession()
+
+      const imported = await act(async () => result.current.importSession(freshToken))
+
+      expect(imported).toBe(true)
+      expect(GlobalStorage.get(SESSION_STORAGE_KEY)).toBe(freshToken)
+    })
+
+    it('does not adopt the token when the session is cleared during the ping', async () => {
+      const { result } = renderSession()
+      mockAuth.ping.mockImplementation(async () => {
+        // The caller signs out while the request is in flight. Nothing was stored to begin with,
+        // so storage ends up looking exactly as it did — only the recorded clear shows the
+        // sign-out, and it has to cancel the import.
+        result.current.setSession(null)
+        return { status: 200, data: { token: freshToken } }
+      })
+
+      const imported = await act(async () => result.current.importSession(freshToken))
+
+      expect(imported).toBe(false)
+      expect(GlobalStorage.get(SESSION_STORAGE_KEY)).toBeNull()
+    })
+
+    it('reports success for overlapping imports of the same token', async () => {
+      mockAuth.ping.mockResolvedValue({ status: 200, data: { token: freshToken } })
+
+      const { result } = renderSession()
+
+      const [first, second] = await act(async () =>
+        Promise.all([
+          result.current.importSession(freshToken),
+          result.current.importSession(freshToken),
+        ])
+      )
+
+      expect(first).toBe(true)
+      expect(second).toBe(true)
+      expect(GlobalStorage.get(SESSION_STORAGE_KEY)).toBe(freshToken)
+    })
+
+    it('lets the first overlapping import of a different token win', async () => {
+      const otherToken = 'header.other-login.signature'
+      // First call answers immediately, the second only after the first has already stored its
+      // token. The second import asked for a session that is no longer the active one, so it must
+      // report failure rather than overwrite it or claim success.
+      mockAuth.ping.mockImplementation(async (token: string) => {
+        if (token === otherToken) {
+          await new Promise((resolve) => setTimeout(resolve, 0))
+        }
+        return { status: 200, data: { token } }
+      })
+
+      const { result } = renderSession()
+
+      const [first, second] = await act(async () =>
+        Promise.all([
+          result.current.importSession(freshToken),
+          result.current.importSession(otherToken),
+        ])
+      )
+
+      expect(first).toBe(true)
+      expect(second).toBe(false)
+      expect(GlobalStorage.get(SESSION_STORAGE_KEY)).toBe(freshToken)
+    })
+
+    it('imports into the session slot it is given', async () => {
+      const customKey = 'other-session'
+      // The default slot already holds the token; the custom slot is empty. The import has to
+      // populate the slot its setter writes, not report success on the strength of the other one.
+      GlobalStorage.set(SESSION_STORAGE_KEY, freshToken)
+      GlobalStorage.set(customKey, null)
+      mockAuth.ping.mockResolvedValue({ status: 200, data: { token: freshToken } })
+
+      const { result } = renderHook(() => {
+        const [session, setSession, controller] = useSession(customKey)
+        const importSession = useImportSession(
+          mockAuth as unknown as AuthAPI,
+          session,
+          setSession,
+          undefined,
+          controller
+        )
+        return { importSession }
+      })
+
+      const imported = await act(async () => result.current.importSession(freshToken))
+
+      expect(imported).toBe(true)
+      expect(GlobalStorage.get(customKey)).toBe(freshToken)
+    })
+
+    it('populates a custom slot even when no controller is passed', async () => {
+      const customKey = 'other-session-no-controller'
+      // The four-argument form has no controller, so it builds one from the setter; either way the
+      // custom slot has to end up holding the token, because that is the session the caller imports.
+      GlobalStorage.set(SESSION_STORAGE_KEY, freshToken)
+      GlobalStorage.set(customKey, null)
+      mockAuth.ping.mockResolvedValue({ status: 200, data: { token: freshToken } })
+
+      const { result } = renderHook(() => {
+        const [session, setSession] = useSession(customKey)
+        return {
+          importSession: useImportSession(mockAuth as unknown as AuthAPI, session, setSession),
+        }
+      })
+
+      const imported = await act(async () => result.current.importSession(freshToken))
+
+      expect(imported).toBe(true)
+      expect(GlobalStorage.get(customKey)).toBe(freshToken)
+    })
+
+    it('does not resurrect a session cleared on its own slot during the ping', async () => {
+      const customKey = 'other-session-cleared-during-ping'
+      GlobalStorage.set(customKey, null)
+
+      const { result } = renderHook(() => {
+        const [session, setSession] = useSession(customKey)
+        return {
+          importSession: useImportSession(mockAuth as unknown as AuthAPI, session, setSession),
+          setSession,
+        }
+      })
+
+      // The caller signs out of the slot its own setter writes while the request is in flight. Only a
+      // fallback controller bound to that slot sees it, and the late response must not undo it.
+      mockAuth.ping.mockImplementation(async () => {
+        result.current.setSession(null)
+        return { status: 200, data: { token: freshToken } }
+      })
+
+      const imported = await act(async () => result.current.importSession(freshToken))
+
+      expect(imported).toBe(false)
+      expect(GlobalStorage.get(customKey)).toBeNull()
+    })
+
+    it('is not cancelled by a clear of a different session', async () => {
+      const { result } = renderSession()
+      // An app can hold more than one session; clearing that one is not a sign-out from this one.
+      const { result: otherSession } = renderHook(() => useSession('other-session'))
+      mockAuth.ping.mockImplementation(async () => {
+        otherSession.current[1](null)
+        return { status: 200, data: { token: freshToken } }
+      })
+
+      const imported = await act(async () => result.current.importSession(freshToken))
+
+      expect(imported).toBe(true)
+      expect(GlobalStorage.get(SESSION_STORAGE_KEY)).toBe(freshToken)
     })
   })
 })

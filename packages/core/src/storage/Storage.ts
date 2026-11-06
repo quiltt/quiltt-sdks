@@ -30,6 +30,17 @@ export class Storage<T> {
   }
 
   /**
+   * Whether the key holds a value, including an empty one. A key that was written as `undefined`
+   * and one that was never written both read back as empty from {#get}; this tells them apart,
+   * which callers need when an empty value means "cleared" rather than "never set".
+   */
+  has = (key: string): boolean => {
+    this.monitorLocalStorageChanges(key)
+
+    return this.memoryStore.has(key) || this.localStore.has(key)
+  }
+
+  /**
    * We don't trust localStorage to always be present, so we can't rely on it to
    * update memoryStorage based on emitted changes. So we manage our own
    * emitting while using the underlying events to keep memoryStore in sync with

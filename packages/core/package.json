@@ -59,6 +59,11 @@
       "require": "./dist/observables/index.cjs",
       "import": "./dist/observables/index.js"
     },
+    "./session": {
+      "types": "./dist/session/index.d.ts",
+      "require": "./dist/session/index.cjs",
+      "import": "./dist/session/index.js"
+    },
     "./storage": {
       "types": "./dist/storage/index.d.ts",
       "require": "./dist/storage/index.cjs",
