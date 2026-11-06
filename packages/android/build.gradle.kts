@@ -15,7 +15,12 @@ subprojects {
         resolutionStrategy {
             force(
                 "commons-io:commons-io:2.14.0",
-                "com.google.guava:guava:32.0.1-jre",
+                "com.google.guava:guava:33.7.2-jre",
+                "org.ow2.asm:asm:9.11",
+                "org.ow2.asm:asm-analysis:9.11",
+                "org.ow2.asm:asm-commons:9.11",
+                "org.ow2.asm:asm-tree:9.11",
+                "org.ow2.asm:asm-util:9.11",
                 "com.google.protobuf:protobuf-java:3.25.5",
                 "org.bouncycastle:bcprov-jdk18on:1.86",
                 "io.netty:netty-buffer:4.1.138.Final",
