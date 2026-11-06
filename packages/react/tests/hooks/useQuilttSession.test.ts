@@ -6,6 +6,16 @@ import type { QuilttJWT } from '@quiltt/core'
 import { useQuilttSession } from '@/hooks/useQuilttSession'
 import { useSession } from '@/hooks/useSession'
 
+// `useSession` returns a setter tagged with the slot it writes, and the controller that pairs the two;
+// these tests never exercise either, so stubs keep the mock in shape.
+const stubSetSession = () => Object.assign(vi.fn(), { storageKey: 'session' })
+
+const stubController = (setSession: unknown) => ({
+  set: setSession as never,
+  snapshot: () => ({ token: null, revision: 0 }),
+  adopt: () => true,
+})
+
 // Mock dependencies
 vi.mock('@/hooks/useQuilttSettings', () => ({
   useQuilttSettings: vi.fn().mockReturnValue({ clientId: 'test-client-id' }),
@@ -37,16 +47,36 @@ describe('useQuilttSession', () => {
   })
 
   it('initializes with undefined session if no token is stored', () => {
-    const mockSetSession = vi.fn()
+    const mockSetSession = stubSetSession()
     const mockSession: QuilttJWT | undefined = undefined
-    vi.mocked(useSession).mockReturnValue([mockSession, mockSetSession])
+    vi.mocked(useSession).mockReturnValue([
+      mockSession,
+      mockSetSession,
+      stubController(mockSetSession),
+      true,
+    ])
 
     const { result } = renderHook(() => useQuilttSession())
     expect(result.current.session).toBeUndefined()
   })
 
+  it('reports the session as unread until storage has been read', () => {
+    const mockSetSession = stubSetSession()
+
+    vi.mocked(useSession).mockReturnValue([
+      undefined,
+      mockSetSession,
+      stubController(mockSetSession),
+      false,
+    ])
+
+    const { result } = renderHook(() => useQuilttSession())
+
+    expect(result.current.restored).toBe(false)
+  })
+
   it('clears the session upon expiration', async () => {
-    const mockSetSession = vi.fn()
+    const mockSetSession = stubSetSession()
     const expiredSession: QuilttJWT = {
       token: 'mock.token.value',
       claims: {
@@ -67,7 +97,12 @@ describe('useQuilttSession', () => {
     }
 
     // First return the expired session, then undefined after clearing
-    vi.mocked(useSession).mockReturnValue([expiredSession, mockSetSession])
+    vi.mocked(useSession).mockReturnValue([
+      expiredSession,
+      mockSetSession,
+      stubController(mockSetSession),
+      true,
+    ])
 
     const { result } = renderHook(() => useQuilttSession())
 
@@ -84,9 +119,14 @@ describe('useQuilttSession', () => {
   })
 
   it('memoizes AuthAPI instance when clientId does not change', () => {
-    const mockSetSession = vi.fn()
+    const mockSetSession = stubSetSession()
     const mockSession: QuilttJWT | undefined = undefined
-    vi.mocked(useSession).mockReturnValue([mockSession, mockSetSession])
+    vi.mocked(useSession).mockReturnValue([
+      mockSession,
+      mockSetSession,
+      stubController(mockSetSession),
+      true,
+    ])
 
     // First render
     const { result: result1 } = renderHook(() => useQuilttSession())

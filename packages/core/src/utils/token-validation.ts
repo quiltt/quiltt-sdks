@@ -1,7 +1,7 @@
 import { GraphQLError } from 'graphql'
 
 import { JsonWebTokenParse } from '@/auth/json-web-token'
-import { GlobalStorage } from '@/storage'
+import { type SessionTokenSource, sharedSessionTokenSource } from '@/session'
 
 /**
  * Result of token validation
@@ -11,19 +11,25 @@ export type TokenValidationResult =
   | { valid: false; error: GraphQLError }
 
 /**
- * Validates the session token from GlobalStorage.
+ * Validates the session token it is given, or the one in GlobalStorage.
  *
  * This function:
  * - Checks if a session token exists
  * - Validates token expiration
- * - Clears expired tokens from storage (triggers observers and React re-renders)
+ * - Drops an expired token through the source that provided it (the store, by default, which
+ *   triggers observers and re-renders)
  * - Returns appropriate GraphQL errors for authentication failures
  *
  * @param errorMessagePrefix - Optional prefix for error messages (e.g., "for subscription")
+ * @param session - Where to read the token from. Defaults to the shared GlobalStorage slot; a server
+ *   render passes its request-local session, because it has no shared slot to read.
  * @returns TokenValidationResult indicating whether the token is valid or providing an error
  */
-export function validateSessionToken(errorMessagePrefix = ''): TokenValidationResult {
-  const token = GlobalStorage.get('session')
+export function validateSessionToken(
+  errorMessagePrefix = '',
+  session: SessionTokenSource = sharedSessionTokenSource
+): TokenValidationResult {
+  const token = session.read()
 
   if (!token) {
     return {
@@ -46,8 +52,8 @@ export function validateSessionToken(errorMessagePrefix = ''): TokenValidationRe
   if (jwt?.claims.exp) {
     const nowInSeconds = Math.floor(Date.now() / 1000)
     if (jwt.claims.exp < nowInSeconds) {
-      // Clear expired token - this triggers observers and React re-renders
-      GlobalStorage.set('session', null)
+      // Drop the token the source handed us, wherever it keeps it.
+      session.clear?.()
 
       return {
         valid: false,

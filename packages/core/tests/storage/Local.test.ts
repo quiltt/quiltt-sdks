@@ -255,16 +255,40 @@ describe('LocalStorage', () => {
   })
 
   describe('set method edge cases', () => {
-    it('should remove item when setting null/undefined value', () => {
+    it('should keep a cleared value cleared instead of removing the item', () => {
       ls.set('testKey', { value: 'initial' })
       expect(ls.get('testKey')).toEqual({ value: 'initial' })
 
+      // Removing the key would make it indistinguishable from one that was never written, so a
+      // caller's default would come back over a value the app had cleared. It reads back as `null`.
       ls.set('testKey', null)
       expect(ls.get('testKey')).toBeNull()
 
       ls.set('testKey', { value: 'test' })
       ls.set('testKey', undefined)
       expect(ls.get('testKey')).toBeNull()
+
+      // And a key that was never written still reads as absent.
+      expect(ls.get('neverWritten')).toBeUndefined()
+    })
+
+    it('should survive a reload with the clear intact', () => {
+      ls.set('testKey', 'dark')
+      ls.set('testKey', null)
+
+      // A new wrapper over the same storage is what a reload amounts to: the in-memory history is
+      // gone, and only what was written is left.
+      const reloaded = new LocalStorage()
+
+      expect(reloaded.get('testKey')).toBeNull()
+      expect(reloaded.has('testKey')).toBe(true)
+    })
+
+    it('should distinguish a missing key from a stored null', () => {
+      expect(ls.get('neverWritten')).toBeUndefined()
+
+      window.localStorage.setItem('quiltt.storedNull', 'null')
+      expect(ls.get('storedNull')).toBeNull()
     })
   })
 
@@ -461,17 +485,14 @@ describe('LocalStorage', () => {
 
       ls.unsubscribe('testKey', observer1)
 
-      // Simulate a storage event
-      const storageEvent = new StorageEvent('storage', {
-        key: 'quiltt.testKey',
-        newValue: JSON.stringify({ test: true }),
-      })
-
-      const mockEventListener = (window.addEventListener as any).mock.calls.find(
-        (call: any) => call[0] === 'storage'
-      )?.[1]
-
-      mockEventListener(storageEvent)
+      // Simulate a storage event. Dispatching it lets the listener this instance registered on
+      // `window` run, instead of reaching into a spy another test happened to leave installed.
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: 'quiltt.testKey',
+          newValue: JSON.stringify({ test: true }),
+        })
+      )
 
       expect(observer1).not.toHaveBeenCalled()
       expect(observer2).toHaveBeenCalledWith({ test: true })
@@ -488,23 +509,22 @@ describe('LocalStorage', () => {
       const unsubscribe = ls.subscribe('testKey', observer)
 
       // Trigger event to verify observer is active
-      const storageEvent = new StorageEvent('storage', {
-        key: 'quiltt.testKey',
-        newValue: JSON.stringify({ test: true }),
-      })
+      const dispatchStorageEvent = () =>
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: 'quiltt.testKey',
+            newValue: JSON.stringify({ test: true }),
+          })
+        )
 
-      const mockEventListener = (window.addEventListener as any).mock.calls.find(
-        (call: any) => call[0] === 'storage'
-      )?.[1]
-
-      mockEventListener(storageEvent)
+      dispatchStorageEvent()
       expect(observer).toHaveBeenCalledWith({ test: true })
 
       // Unsubscribe and verify observer is no longer called
       observer.mockClear()
       unsubscribe()
 
-      mockEventListener(storageEvent)
+      dispatchStorageEvent()
       expect(observer).not.toHaveBeenCalled()
     })
   })
@@ -521,7 +541,7 @@ describe('LocalStorage', () => {
       const testKey = 'testKey'
       ls.set(testKey, { a: 1 })
       ls.remove(testKey)
-      expect(ls.get(testKey)).toBeNull()
+      expect(ls.get(testKey)).toBeUndefined()
     })
   })
 
@@ -532,8 +552,23 @@ describe('LocalStorage', () => {
       ls.set('testKey', { value: 'test' })
       expect(ls.has('testKey')).toBe(true)
 
+      // A cleared key was written, so it is still present — as `null` rather than as a value.
       ls.set('nullKey', null)
-      expect(ls.has('nullKey')).toBe(false)
+      expect(ls.has('nullKey')).toBe(true)
+      expect(ls.get('nullKey')).toBeNull()
+    })
+
+    it('should report absence when reading the key throws', () => {
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const getItemSpy = vi.spyOn(window.localStorage, 'getItem').mockImplementation(() => {
+        throw new Error('storage blocked')
+      })
+
+      expect(ls.has('testKey')).toBe(false)
+      expect(consoleWarnSpy).toHaveBeenCalled()
+
+      getItemSpy.mockRestore()
+      consoleWarnSpy.mockRestore()
     })
 
     it('should test clear method', () => {
@@ -545,8 +580,8 @@ describe('LocalStorage', () => {
 
       ls.clear()
 
-      expect(ls.get('key1')).toBeNull()
-      expect(ls.get('key2')).toBeNull()
+      expect(ls.get('key1')).toBeUndefined()
+      expect(ls.get('key2')).toBeUndefined()
     })
 
     it('should test keys method', () => {
@@ -571,8 +606,8 @@ describe('LocalStorage', () => {
       ls.clear()
 
       // Quiltt keys should be cleared
-      expect(ls.get('key1')).toBeNull()
-      expect(ls.get('key2')).toBeNull()
+      expect(ls.get('key1')).toBeUndefined()
+      expect(ls.get('key2')).toBeUndefined()
 
       // Other keys should remain
       expect(window.localStorage.getItem('other.key1')).not.toBeNull()

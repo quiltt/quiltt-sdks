@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApolloClient, ApolloLink, gql, InMemoryCache } from '@apollo/client/core'
 import { Observable } from 'rxjs'
 
-import { ErrorLink } from '@/api/graphql/links/ErrorLink'
+import { createErrorLink, ErrorLink } from '@/api/graphql/links/ErrorLink'
 import { GlobalStorage } from '@/storage'
 
 vi.mock('@/storage', () => ({
@@ -98,6 +98,118 @@ describe('ErrorLink', () => {
       expect.objectContaining({ statusCode: 401 })
     )
     expect(GlobalStorage.set).toHaveBeenCalledWith('session', null)
+    consoleWarnSpy.mockRestore()
+  })
+
+  it('should clear the supplied session source, not the shared store, on 401', async () => {
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const clear = vi.fn()
+
+    const error = Object.assign(new Error('Unauthorized'), {
+      statusCode: 401,
+      bodyText: 'Unauthorized',
+      response: new Response('Unauthorized', { status: 401 }),
+    })
+
+    const mockLink = new ApolloLink(() => {
+      return new Observable((observer) => {
+        observer.error(error)
+      })
+    })
+
+    const client = new ApolloClient({
+      cache: new InMemoryCache(),
+      link: createErrorLink({ read: () => 'request_token', clear }).concat(mockLink),
+    })
+
+    try {
+      await client.query({
+        query: gql`
+          query Test {
+            data
+          }
+        `,
+      })
+    } catch (_e) {
+      // Expected to throw
+    }
+
+    expect(clear).toHaveBeenCalledTimes(1)
+    expect(GlobalStorage.set).not.toHaveBeenCalled()
+    consoleWarnSpy.mockRestore()
+  })
+
+  // A `401` answers the token that sent the request. If the session has moved on by the time it
+  // lands — a refresh, or a sign-in as someone else — clearing here would sign out the newer session.
+  const queryWithToken = async (link: ApolloLink) => {
+    const client = new ApolloClient({
+      cache: new InMemoryCache(),
+      link,
+    })
+
+    try {
+      await client.query({
+        query: gql`
+          query Test {
+            data
+          }
+        `,
+      })
+    } catch (_e) {
+      // Expected to throw
+    }
+  }
+
+  const withAuthorization = (token: string) =>
+    new ApolloLink((operation, forward) => {
+      operation.setContext(({ headers = {} }: { headers?: Record<string, string> }) => ({
+        headers: { ...headers, authorization: `Bearer ${token}` },
+      }))
+
+      return forward(operation)
+    })
+
+  const failWith401 = () =>
+    new ApolloLink(
+      () =>
+        new Observable((observer) => {
+          observer.error(
+            Object.assign(new Error('Unauthorized'), {
+              statusCode: 401,
+              bodyText: 'Unauthorized',
+              response: new Response('Unauthorized', { status: 401 }),
+            })
+          )
+        })
+    )
+
+  it('should clear the session the request authenticated with', async () => {
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const clear = vi.fn()
+
+    await queryWithToken(
+      withAuthorization('current_token')
+        .concat(createErrorLink({ read: () => 'current_token', clear }))
+        .concat(failWith401())
+    )
+
+    expect(clear).toHaveBeenCalledTimes(1)
+    consoleWarnSpy.mockRestore()
+  })
+
+  it('should not clear a session the request did not authenticate with', async () => {
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const clear = vi.fn()
+
+    // The request went out with `older_token`; the session holds `newer_token` by the time the
+    // response lands, so the rejection says nothing about the session that is now active.
+    await queryWithToken(
+      withAuthorization('older_token')
+        .concat(createErrorLink({ read: () => 'newer_token', clear }))
+        .concat(failWith401())
+    )
+
+    expect(clear).not.toHaveBeenCalled()
     consoleWarnSpy.mockRestore()
   })
 

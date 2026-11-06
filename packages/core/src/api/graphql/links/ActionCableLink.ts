@@ -6,6 +6,7 @@ import { print } from 'graphql'
 import { Observable } from 'rxjs'
 
 import { endpointWebsockets } from '@/config'
+import type { SessionTokenSource } from '@/session'
 import { validateSessionToken } from '@/utils/token-validation'
 
 type RequestResult = ApolloLink.Result<{ [key: string]: unknown }>
@@ -22,12 +23,19 @@ export class ActionCableLink extends ApolloLink {
   actionName: string
   connectionParams: ConnectionParams
   callbacks: SubscriptionCallbacks
+  session?: SessionTokenSource
 
   constructor(options: {
     channelName?: string
     actionName?: string
     connectionParams?: ConnectionParams
     callbacks?: SubscriptionCallbacks
+    /**
+     * Where to read the token the WebSocket connects with. Defaults to the shared store, which is
+     * what a browser uses; a server render passes the same request-local session its other links
+     * authenticate with, because the shared store holds no session for it.
+     */
+    session?: SessionTokenSource
   }) {
     super()
     this.cables = {}
@@ -35,6 +43,7 @@ export class ActionCableLink extends ApolloLink {
     this.actionName = options.actionName || 'execute'
     this.connectionParams = options.connectionParams || {}
     this.callbacks = options.callbacks || {}
+    this.session = options.session
   }
 
   // Interestingly, this link does _not_ call through to `next` because
@@ -43,7 +52,7 @@ export class ActionCableLink extends ApolloLink {
     operation: ApolloLink.Operation,
     _next: ApolloLink.ForwardFunction
   ): Observable<RequestResult> {
-    const validation = validateSessionToken('for subscription')
+    const validation = validateSessionToken('for subscription', this.session)
 
     if (!validation.valid) {
       return new Observable((observer) => {

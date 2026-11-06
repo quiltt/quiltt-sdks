@@ -1,6 +1,7 @@
 import { ApolloLink } from '@apollo/client/core'
 import { Observable } from 'rxjs'
 
+import type { SessionTokenSource } from '@/session'
 import { validateSessionToken } from '@/utils/token-validation'
 
 /**
@@ -9,15 +10,25 @@ import { validateSessionToken } from '@/utils/token-validation'
  * Features:
  * - Automatically adds Bearer token to request headers
  * - Detects expired tokens and triggers proper error handling
- * - Clears expired sessions from storage (triggers React re-renders via observers)
+ * - Drops an expired session through the source it was read from (for the shared store, that
+ *   triggers React re-renders via observers)
  * - Emits GraphQL errors for consistent Apollo error handling
  */
 export class AuthLink extends ApolloLink {
+  /**
+   * @param session - Where to read the token from. Defaults to the shared `GlobalStorage` slot, which
+   *   is what a browser uses; a server render passes its request-local session, which the shared slot
+   *   cannot hold. @see SessionTokenSource
+   */
+  constructor(private readonly session?: SessionTokenSource) {
+    super()
+  }
+
   override request(
     operation: ApolloLink.Operation,
     forward: ApolloLink.ForwardFunction
   ): Observable<ApolloLink.Result> {
-    const validation = validateSessionToken()
+    const validation = validateSessionToken('', this.session)
 
     if (!validation.valid) {
       return new Observable((observer) => {

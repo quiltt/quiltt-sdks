@@ -36,9 +36,14 @@ import type {
   UnprocessableResponse,
   UsernamePayload,
 } from '@quiltt/core'
-import { AuthAPI, JsonWebTokenParse } from '@quiltt/core'
+import { AuthAPI, createSessionController, JsonWebTokenParse } from '@quiltt/core'
 
-import { QuilttClientIdKey, QuilttSessionKey, QuilttSetSessionKey } from '../plugin/keys'
+import {
+  QuilttClientIdKey,
+  QuilttSessionControllerKey,
+  QuilttSessionKey,
+  QuilttSetSessionKey,
+} from '../plugin/keys'
 
 // Initialize JWT parser
 const parse = JsonWebTokenParse<PrivateClaims>
@@ -119,6 +124,12 @@ export const useQuilttSession = (environmentId?: string): UseQuilttSessionReturn
   // Create a computed ref for the session
   const session = computed(() => sessionRef.value)
 
+  // Binds the slot to the setter that writes it, so an async import cannot read one session and
+  // write another. The plugin provides the slot this app guards — on a server that is the request's
+  // own session, not the process-wide store — and the fallback covers a context that supplied the
+  // keys by hand. @see SessionController
+  const controller = inject(QuilttSessionControllerKey) ?? createSessionController(setSession)
+
   // Create AuthAPI instance (memoized based on clientId)
   const getAuth = () => new AuthAPI(clientIdRef?.value)
 
@@ -167,11 +178,22 @@ export const useQuilttSession = (environmentId?: string): UseQuilttSessionReturn
     // Is this token within the expected environment?
     if (environmentId && jwt.claims.eid !== environmentId) return false
 
+    // The request is awaited, so the session can change underneath it: a sign-out (or a different
+    // sign-in) during the ping has to win over this late response, otherwise a token imported
+    // before the sign-out is written back afterwards and silently restores the session that was
+    // just ended. Adoption also reports success when another call already stored this token.
+    const sessionAtCall = controller.snapshot()
+
     // Is this token active?
     const response = await auth.ping(token)
     switch (response.status) {
       case 200:
-        setSession(token)
+        if (!controller.adopt(token, sessionAtCall)) return false
+
+        // Adoption writes nothing when the slot already held this token, so the ref below can still
+        // be showing an older session (or none). Point it at the session that is now active.
+        if (sessionRef.value?.token !== token) setSession(token)
+
         validatedState.token = token
         validatedState.environmentId = environmentId
         return true

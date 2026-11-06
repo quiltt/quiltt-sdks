@@ -51,7 +51,9 @@ Create a changeset whenever you make changes that should be included in the next
 - Documentation updates affecting the package API
 - Dependency updates that affect consumers
 
-A single changeset bumps all packages together due to the fixed versioning group. List **every package whose behaviour changed**: the fixed group applies the version bump to all 8 either way, but only the listed packages get the summary in their `CHANGELOG.md`.
+A single changeset bumps all packages together due to the fixed versioning group. List **all 8 packages** in every changeset: the fixed group applies the version bump either way, but only the listed packages get the summary in their `CHANGELOG.md`, so listing all of them keeps every platform's history complete.
+
+Every package is bumped at the same time and released on one shared version, so they always match across all platforms. That means a changeset uses **one bump type** on every package it lists — never `minor` for one and `patch` for another, which would describe a smaller release for a package that ships the group's version. The most significant change in the PR sets the version for all of them. Every package is listed regardless of where the code changed: a wrapper that only re-exports it (`@quiltt/react-native`, `@quiltt/capacitor`) and a native SDK with no JavaScript surface (`@quiltt/android`, `@quiltt/ios`, `@quiltt/flutter`) ship the same version and record the same note.
 
 ### How to Create a Changeset
 
@@ -64,8 +66,8 @@ A single changeset bumps all packages together due to the fixed versioning group
    ```
 
 3. Follow the interactive prompts:
-   - **Select packages**: Choose every package whose behaviour changed (the fixed group gives all 8 the same version regardless)
-   - **Select bump type**: Choose the appropriate semantic version bump:
+   - **Select packages**: Choose all 8 (the fixed group gives them the same version regardless)
+   - **Select bump type**: Choose the appropriate semantic version bump, and pick the same one for every package in the changeset:
      - **patch**: Bug fixes and minor updates (1.0.0 → 1.0.1)
      - **minor**: New features, backwards-compatible (1.0.0 → 1.1.0)
      - **major**: Breaking changes (1.0.0 → 2.0.0)

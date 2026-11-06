@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
 
+import { GlobalStorage, SESSION_STORAGE_KEY } from '@quiltt/core'
+
 import { useSession } from '@/hooks/useSession'
 import { useStorage } from '@/hooks/useStorage'
 
@@ -64,6 +66,12 @@ describe('useSession', () => {
     vi.clearAllMocks()
     vi.useFakeTimers()
     vi.spyOn(Date, 'now').mockRestore()
+
+    // `useStorage` is mocked here, but the setter still reads the live slot, and a few tests write to
+    // it directly. Start every test from a known slot rather than from whatever the test before it
+    // left behind — and from one that holds a session, so clearing it is a change to write rather
+    // than a no-op.
+    GlobalStorage.set(SESSION_STORAGE_KEY, 'stored.session.token')
   })
 
   afterEach(() => {
@@ -72,10 +80,25 @@ describe('useSession', () => {
   })
 
   it('initializes with undefined session if no token is stored', () => {
-    vi.mocked(useStorage).mockReturnValue([undefined, vi.fn()])
+    vi.mocked(useStorage).mockReturnValue([undefined, vi.fn(), true])
 
     const { result } = renderHook(() => useSession())
     expect(result.current[0]).toBeUndefined()
+  })
+
+  it('reports whether the session has been read from storage', () => {
+    const token = createTestToken()
+
+    vi.mocked(useStorage).mockReturnValue([token, vi.fn(), false])
+    const { result, rerender } = renderHook(() => useSession())
+
+    // The caller decides what an empty session means, so it needs to know when the value is final.
+    expect(result.current[3]).toBe(false)
+
+    vi.mocked(useStorage).mockReturnValue([token, vi.fn(), true])
+    rerender()
+
+    expect(result.current[3]).toBe(true)
   })
 
   it('clears the session upon expiration', async () => {
@@ -107,7 +130,7 @@ describe('useSession', () => {
 
     // Mock current time to be after token expiration
     vi.spyOn(Date, 'now').mockReturnValue(1700000000000)
-    vi.mocked(useStorage).mockReturnValue([token, mockSetStorage])
+    vi.mocked(useStorage).mockReturnValue([token, mockSetStorage, true])
 
     renderHook(() => useSession())
 
@@ -134,18 +157,97 @@ describe('useSession', () => {
 
     // Set current time to be before token expiration
     vi.spyOn(Date, 'now').mockImplementation(() => currentTime * 1000)
-    vi.mocked(useStorage).mockReturnValue([token, setStorage])
+    vi.mocked(useStorage).mockReturnValue([token, setStorage, true])
 
     const { result } = renderHook(() => useSession())
 
-    expect(result.current[0]).toBeDefined()
+    expect(result.current[0]?.token).toBe(token)
+    expect(result.current[0]?.claims.exp).toBe(expirationTime)
     expect(setStorage).not.toHaveBeenCalled()
+  })
+
+  describe('session controller', () => {
+    const key = 'controller-test-session'
+
+    it('exposes the setter it uses and an empty slot snapshot', () => {
+      const mockSetStorage = vi.fn()
+      vi.mocked(useStorage).mockReturnValue([undefined, mockSetStorage, true])
+      GlobalStorage.set(key, null)
+
+      const { result } = renderHook(() => useSession(key))
+      const controller = result.current[2]
+
+      expect(controller.set).toBe(result.current[1])
+      expect(controller.snapshot()).toEqual({ token: null, revision: expect.any(Number) })
+    })
+
+    it('adopts the token when the slot has not moved on', () => {
+      // `adopt` reads the slot back before reporting success, so the stand-in setter has to write it
+      // the way the real one does.
+      const mockSetStorage = vi.fn((next: unknown) =>
+        GlobalStorage.set(key, typeof next === 'function' ? next(null) : (next as string | null))
+      )
+      vi.mocked(useStorage).mockReturnValue([undefined, mockSetStorage, true])
+      GlobalStorage.set(key, null)
+      const token = createTestToken()
+
+      const { result } = renderHook(() => useSession(key))
+      const controller = result.current[2]
+      const at = controller.snapshot()
+
+      expect(controller.adopt(token, at)).toBe(true)
+      expect(mockSetStorage).toHaveBeenCalledWith(token)
+    })
+
+    it('reports failure when the slot rejects the token', () => {
+      const mockSetStorage = vi.fn()
+      vi.mocked(useStorage).mockReturnValue([undefined, mockSetStorage, true])
+      GlobalStorage.set(key, null)
+
+      const { result } = renderHook(() => useSession(key))
+      const controller = result.current[2]
+
+      // `setSession` does not store a token it cannot parse, so there is no session to report.
+      expect(controller.adopt('not-a-token', controller.snapshot())).toBe(false)
+      expect(GlobalStorage.get(key)).toBeNull()
+    })
+
+    it('reports success without writing when the slot already holds the token', () => {
+      const mockSetStorage = vi.fn()
+      vi.mocked(useStorage).mockReturnValue([undefined, mockSetStorage, true])
+      GlobalStorage.set(key, 'header.existing.signature')
+
+      const { result } = renderHook(() => useSession(key))
+      const controller = result.current[2]
+
+      expect(controller.adopt('header.existing.signature', controller.snapshot())).toBe(true)
+      expect(mockSetStorage).not.toHaveBeenCalled()
+    })
+
+    it('refuses when the slot was cleared while the caller was away', () => {
+      const mockSetStorage = vi.fn()
+      vi.mocked(useStorage).mockReturnValue([undefined, mockSetStorage, true])
+      GlobalStorage.set(key, null)
+      const token = createTestToken()
+
+      const { result } = renderHook(() => useSession(key))
+      const controller = result.current[2]
+      const at = controller.snapshot()
+
+      act(() => {
+        result.current[1](null)
+      })
+      mockSetStorage.mockClear()
+
+      expect(controller.adopt(token, at)).toBe(false)
+      expect(mockSetStorage).not.toHaveBeenCalled()
+    })
   })
 
   describe('setSession functionality', () => {
     it('accepts and validates a new valid token', () => {
       const mockSetStorage = vi.fn()
-      vi.mocked(useStorage).mockReturnValue([undefined, mockSetStorage])
+      vi.mocked(useStorage).mockReturnValue([undefined, mockSetStorage, true])
 
       const { result } = renderHook(() => useSession())
 
@@ -168,7 +270,7 @@ describe('useSession', () => {
 
     it('rejects invalid token format', () => {
       const mockSetStorage = vi.fn()
-      vi.mocked(useStorage).mockReturnValue([undefined, mockSetStorage])
+      vi.mocked(useStorage).mockReturnValue([undefined, mockSetStorage, true])
 
       const { result } = renderHook(() => useSession())
 
@@ -181,7 +283,7 @@ describe('useSession', () => {
 
     it('rejects malformed JWT (missing parts)', () => {
       const mockSetStorage = vi.fn()
-      vi.mocked(useStorage).mockReturnValue([undefined, mockSetStorage])
+      vi.mocked(useStorage).mockReturnValue([undefined, mockSetStorage, true])
 
       const { result } = renderHook(() => useSession())
 
@@ -194,7 +296,7 @@ describe('useSession', () => {
 
     it('rejects JWT with invalid base64', () => {
       const mockSetStorage = vi.fn()
-      vi.mocked(useStorage).mockReturnValue([undefined, mockSetStorage])
+      vi.mocked(useStorage).mockReturnValue([undefined, mockSetStorage, true])
 
       const { result } = renderHook(() => useSession())
 
@@ -208,7 +310,9 @@ describe('useSession', () => {
     it('accepts null to clear session', () => {
       const mockSetStorage = vi.fn()
       const currentToken = 'header.payload.signature'
-      vi.mocked(useStorage).mockReturnValue([currentToken, mockSetStorage])
+      // The setter compares against the stored token, so the slot the hook reports has to hold it.
+      GlobalStorage.set('session', currentToken)
+      vi.mocked(useStorage).mockReturnValue([currentToken, mockSetStorage, true])
 
       const { result } = renderHook(() => useSession())
 
@@ -222,7 +326,8 @@ describe('useSession', () => {
     it('accepts undefined to clear session', () => {
       const mockSetStorage = vi.fn()
       const currentToken = 'header.payload.signature'
-      vi.mocked(useStorage).mockReturnValue([currentToken, mockSetStorage])
+      GlobalStorage.set('session', currentToken)
+      vi.mocked(useStorage).mockReturnValue([currentToken, mockSetStorage, true])
 
       const { result } = renderHook(() => useSession())
 
@@ -236,7 +341,7 @@ describe('useSession', () => {
     it('handles updater function with valid token', () => {
       const mockSetStorage = vi.fn()
       const oldToken = 'old.token.signature'
-      vi.mocked(useStorage).mockReturnValue([oldToken, mockSetStorage])
+      vi.mocked(useStorage).mockReturnValue([oldToken, mockSetStorage, true])
 
       const { result } = renderHook(() => useSession())
 
@@ -260,7 +365,7 @@ describe('useSession', () => {
     it('handles updater function returning null', () => {
       const mockSetStorage = vi.fn()
       const currentToken = 'current.token.signature'
-      vi.mocked(useStorage).mockReturnValue([currentToken, mockSetStorage])
+      vi.mocked(useStorage).mockReturnValue([currentToken, mockSetStorage, true])
 
       const { result } = renderHook(() => useSession())
 
@@ -274,7 +379,7 @@ describe('useSession', () => {
     it('does not update when setting same token', () => {
       const mockSetStorage = vi.fn()
       const currentToken = 'current.token.signature'
-      vi.mocked(useStorage).mockReturnValue([currentToken, mockSetStorage])
+      vi.mocked(useStorage).mockReturnValue([currentToken, mockSetStorage, true])
 
       const { result } = renderHook(() => useSession())
 
@@ -288,7 +393,7 @@ describe('useSession', () => {
     it('does not update when updater returns same token', () => {
       const mockSetStorage = vi.fn()
       const currentToken = 'current.token.signature'
-      vi.mocked(useStorage).mockReturnValue([currentToken, mockSetStorage])
+      vi.mocked(useStorage).mockReturnValue([currentToken, mockSetStorage, true])
 
       const { result } = renderHook(() => useSession())
 
@@ -325,20 +430,21 @@ describe('useSession', () => {
       const token = createTestToken(claims)
 
       vi.spyOn(Date, 'now').mockImplementation(() => currentTime * 1000)
-      vi.mocked(useStorage).mockReturnValue([token, mockSetStorage])
+      vi.mocked(useStorage).mockReturnValue([token, mockSetStorage, true])
 
       const { result } = renderHook(() => useSession())
 
-      expect(result.current[0]).toBeDefined()
+      expect(result.current[0]?.token).toBe(token)
       expect(result.current[0]?.claims).toEqual(claims)
     })
 
-    it('returns undefined session for null token', () => {
+    it('returns a null session for a cleared slot', () => {
       const mockSetStorage = vi.fn()
-      vi.mocked(useStorage).mockReturnValue([null, mockSetStorage])
+      vi.mocked(useStorage).mockReturnValue([null, mockSetStorage, true])
 
       const { result } = renderHook(() => useSession())
 
+      // `parse` keeps a cleared slot's `null`; only an unread slot is `undefined`.
       expect(result.current[0]).toBeNull()
     })
   })
@@ -355,7 +461,7 @@ describe('useSession', () => {
       })
 
       vi.spyOn(Date, 'now').mockImplementation(() => currentTime * 1000)
-      vi.mocked(useStorage).mockReturnValue([token, mockSetStorage])
+      vi.mocked(useStorage).mockReturnValue([token, mockSetStorage, true])
 
       renderHook(() => useSession())
 
@@ -383,7 +489,7 @@ describe('useSession', () => {
       })
 
       vi.spyOn(Date, 'now').mockImplementation(() => currentTime * 1000)
-      vi.mocked(useStorage).mockReturnValue([token, mockSetStorage])
+      vi.mocked(useStorage).mockReturnValue([token, mockSetStorage, true])
 
       const { unmount } = renderHook(() => useSession())
 
@@ -396,7 +502,7 @@ describe('useSession', () => {
       expect(mockSetStorage).not.toHaveBeenCalled()
     })
 
-    it('updates timer when token changes', async () => {
+    it('replaces the timer when the token changes', async () => {
       const mockSetStorage = vi.fn()
       const currentTime = 1700000000
 
@@ -404,23 +510,32 @@ describe('useSession', () => {
       const token2 = createTestToken({ exp: currentTime + 7200, iat: currentTime }) // 2 hours
 
       vi.spyOn(Date, 'now').mockImplementation(() => currentTime * 1000)
-      vi.mocked(useStorage).mockReturnValue([token1, mockSetStorage])
+      vi.mocked(useStorage).mockReturnValue([token1, mockSetStorage, true])
 
       const { rerender } = renderHook(() => useSession())
 
       // Update to new token with different expiration
-      vi.mocked(useStorage).mockReturnValue([token2, mockSetStorage])
+      vi.mocked(useStorage).mockReturnValue([token2, mockSetStorage, true])
       rerender()
 
-      // Old timer should be cleared, new one should be set
+      // The first token's expiry passes without clearing: its timer was replaced.
+      act(() => {
+        vi.advanceTimersByTime(1800 * 1000)
+      })
       expect(mockSetStorage).not.toHaveBeenCalled()
+
+      // The second token expires on its own schedule.
+      act(() => {
+        vi.advanceTimersByTime((7200 - 1800) * 1000)
+      })
+      expect(mockSetStorage).toHaveBeenCalledWith(null)
     })
   })
 
   describe('custom storage key', () => {
     it('uses custom storage key when provided', () => {
       const mockSetStorage = vi.fn()
-      vi.mocked(useStorage).mockReturnValue([undefined, mockSetStorage])
+      vi.mocked(useStorage).mockReturnValue([undefined, mockSetStorage, true])
 
       renderHook(() => useSession('custom-session-key'))
 
@@ -429,7 +544,7 @@ describe('useSession', () => {
 
     it('uses default storage key when not provided', () => {
       const mockSetStorage = vi.fn()
-      vi.mocked(useStorage).mockReturnValue([undefined, mockSetStorage])
+      vi.mocked(useStorage).mockReturnValue([undefined, mockSetStorage, true])
 
       renderHook(() => useSession())
 
@@ -480,7 +595,7 @@ describe('useSession', () => {
       })
 
       vi.spyOn(Date, 'now').mockImplementation(() => currentTime * 1000)
-      vi.mocked(useStorage).mockReturnValue([token, mockSetStorage])
+      vi.mocked(useStorage).mockReturnValue([token, mockSetStorage, true])
 
       renderHook(() => useSession())
 
@@ -498,7 +613,7 @@ describe('useSession', () => {
       })
 
       vi.spyOn(Date, 'now').mockImplementation(() => currentTime * 1000)
-      vi.mocked(useStorage).mockReturnValue([token, mockSetStorage])
+      vi.mocked(useStorage).mockReturnValue([token, mockSetStorage, true])
 
       renderHook(() => useSession())
 
@@ -532,7 +647,7 @@ describe('useSession', () => {
       })
 
       vi.spyOn(Date, 'now').mockImplementation(() => currentTime * 1000)
-      vi.mocked(useStorage).mockReturnValue([token, mockSetStorage])
+      vi.mocked(useStorage).mockReturnValue([token, mockSetStorage, true])
 
       renderHook(() => useSession())
 
@@ -563,7 +678,7 @@ describe('useSession', () => {
       })
 
       vi.spyOn(Date, 'now').mockImplementation(() => currentTime * 1000)
-      vi.mocked(useStorage).mockReturnValue([token, mockSetStorage])
+      vi.mocked(useStorage).mockReturnValue([token, mockSetStorage, true])
 
       renderHook(() => useSession())
 
@@ -576,6 +691,9 @@ describe('useSession', () => {
         writable: true,
         configurable: true,
       })
+
+      // Without this, a hook that never registered the listener would also "not clear".
+      expect(visibilityChangeHandler).toBeDefined()
 
       act(() => {
         visibilityChangeHandler?.()
@@ -596,18 +714,22 @@ describe('useSession', () => {
       })
 
       vi.spyOn(Date, 'now').mockImplementation(() => currentTime * 1000)
-      vi.mocked(useStorage).mockReturnValue([token, mockSetStorage])
+      vi.mocked(useStorage).mockReturnValue([token, mockSetStorage, true])
 
       const { unmount } = renderHook(() => useSession())
 
+      const handler = visibilityChangeHandler
+      expect(handler).toBeDefined()
+
       unmount()
 
-      expect(mockRemoveEventListener).toHaveBeenCalledWith('visibilitychange', expect.any(Function))
+      // The same handler that was added has to come off, or the listener leaks.
+      expect(mockRemoveEventListener).toHaveBeenCalledWith('visibilitychange', handler)
     })
 
     it('does not register listener when no session exists', () => {
       const mockSetStorage = vi.fn()
-      vi.mocked(useStorage).mockReturnValue([undefined, mockSetStorage])
+      vi.mocked(useStorage).mockReturnValue([undefined, mockSetStorage, true])
 
       renderHook(() => useSession())
 

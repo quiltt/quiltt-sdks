@@ -10,7 +10,7 @@
 // - Authentication utilities (JsonWebTokenParse, AuthStrategies)
 // - Configuration helpers
 // - Observable patterns for reactive data
-// - Storage abstractions (GlobalStorage)
+// - Session slot controller and storage abstractions (GlobalStorage)
 // - Timeout utilities (Timeoutable)
 // - TypeScript utility types
 //
@@ -22,6 +22,7 @@ export * from './api'
 export * from './auth'
 export * from './config'
 export * from './observables'
+export * from './session'
 export * from './storage'
 export * from './timing'
 export * from './types'

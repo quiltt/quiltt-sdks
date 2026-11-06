@@ -20,6 +20,24 @@ describe('MemoryStorage', () => {
       storage.set(testKey, testValue)
       expect(storage.get(testKey)).toEqual(testValue)
     })
+
+    it('should report a key that was never written as absent', () => {
+      expect(storage.has('unknown')).toBe(false)
+    })
+
+    it('should not report a key as written when it was only subscribed to', () => {
+      storage.subscribe('watched', () => {})
+
+      expect(storage.get('watched')).toBeUndefined()
+      expect(storage.has('watched')).toBe(false)
+    })
+
+    it('should report a key written with an empty value as present', () => {
+      storage.set('cleared', undefined)
+
+      expect(storage.get('cleared')).toBeUndefined()
+      expect(storage.has('cleared')).toBe(true)
+    })
   })
 
   describe('subscription behavior', () => {

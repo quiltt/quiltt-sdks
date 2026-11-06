@@ -1,7 +1,17 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 // Import types
-import type { DocumentNode, ErrorData, Maybe, ObservableQuery, QuilttJWT } from '@quiltt/react'
+import type {
+  DocumentNode,
+  ErrorData,
+  Maybe,
+  ObservableQuery,
+  QuilttJWT,
+  SessionController,
+  SessionSnapshot,
+  SessionTokenSource,
+  SetToken,
+} from '@quiltt/react'
 /**
  * Verify that @quiltt/react exports:
  * 1. All @quiltt/core modules (re-exports)
@@ -15,11 +25,13 @@ import {
   ApolloProvider,
   AuthAPI,
   ConnectorsAPI,
+  createSessionController,
   GlobalStorage,
   gql,
   InMemoryCache,
   JsonWebTokenParse,
   MockedProvider,
+  markSessionCleared,
   NetworkStatus,
   QuilttAuthProvider,
   QuilttButton,
@@ -27,6 +39,8 @@ import {
   QuilttContainer,
   QuilttProvider,
   QuilttSettingsProvider,
+  SESSION_STORAGE_KEY,
+  sharedSessionTokenSource,
   Timeoutable,
   useApolloClient,
   useLazyQuery,
@@ -54,6 +68,29 @@ describe('@quiltt/react exports', () => {
     ])('re-exports %s from @quiltt/core', (_name, exported) => {
       expect(exported).toBeDefined()
       expect(typeof exported).toBe('function')
+    })
+
+    // `useSession` returns a `SessionController`, so an app annotating that value needs the type and
+    // the constructor from the package it already depends on.
+    it('re-exports the session helpers from @quiltt/core', () => {
+      GlobalStorage.set(SESSION_STORAGE_KEY, null)
+
+      const set = vi.fn<SetToken>((token) => GlobalStorage.set(SESSION_STORAGE_KEY, token))
+      const controller: SessionController = createSessionController(set)
+      const snapshot: SessionSnapshot = controller.snapshot()
+
+      expect(SESSION_STORAGE_KEY).toBe('session')
+      expect(typeof markSessionCleared).toBe('function')
+      expect(typeof sharedSessionTokenSource.read).toBe('function')
+
+      // The real implementation, not a re-exported stub: adopting an unchanged slot writes through.
+      expect(controller.adopt('session-token', snapshot)).toBe(true)
+      expect(set).toHaveBeenCalledWith('session-token')
+    })
+
+    it('re-exports the session token source type from @quiltt/core', () => {
+      const source: SessionTokenSource = { read: () => null }
+      expect(source.read()).toBeNull()
     })
 
     it('re-exports GlobalStorage instance from @quiltt/core', () => {
