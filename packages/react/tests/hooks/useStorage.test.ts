@@ -5,12 +5,14 @@ import { GlobalStorage } from '@quiltt/core'
 
 import { useStorage } from '@/hooks/useStorage'
 
-// Store subscription callbacks to trigger them manually in tests
-const subscriptionCallbacks = new Map<string, Set<(value: any) => void>>()
+// Store subscription callbacks to trigger them manually in tests. The hook re-reads `GlobalStorage`
+// when the store notifies, so a trigger carries no value: point the mock at the new one first.
+const subscriptionCallbacks = new Map<string, Set<(value?: any) => void>>()
 
 vi.mock('@quiltt/core', () => ({
   GlobalStorage: {
     get: vi.fn(),
+    has: vi.fn(() => true),
     set: vi.fn(),
     subscribe: vi.fn((key: string, callback: (value: any) => void) => {
       if (!subscriptionCallbacks.has(key)) {
@@ -31,6 +33,8 @@ describe('useStorage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     subscriptionCallbacks.clear()
+    // Most cases concern a key that holds a value; the ones that exercise `initialState` opt out.
+    vi.mocked(GlobalStorage.has).mockReturnValue(true)
   })
 
   describe('initialization', () => {
@@ -45,6 +49,7 @@ describe('useStorage', () => {
 
     it('initializes with the default value when GlobalStorage is empty', () => {
       vi.mocked(GlobalStorage.get).mockReturnValue(undefined)
+      vi.mocked(GlobalStorage.has).mockReturnValue(false)
 
       const { result } = renderHook(() => useStorage(storageKey, initialValue))
 
@@ -195,26 +200,16 @@ describe('useStorage', () => {
   })
 
   describe('type safety', () => {
-    it('maintains type information for strings', () => {
-      vi.mocked(GlobalStorage.get).mockReturnValue('test')
-
-      const { result } = renderHook(() => useStorage<string>(storageKey, 'default'))
-
-      // TypeScript should know this is a string | null | undefined
-      const value: string | null | undefined = result.current[0]
-      expect(typeof value).toBe('string')
-    })
-
-    it('maintains type information for numbers', () => {
+    it('returns the value under the generic it was called with', () => {
       vi.mocked(GlobalStorage.get).mockReturnValue(42)
 
       const { result } = renderHook(() => useStorage<number>(storageKey, 0))
 
-      const value: number | null | undefined = result.current[0]
-      expect(typeof value).toBe('number')
+      // The compile-time claim is the generic signature; this pins the value it must carry.
+      expect(result.current[0]).toBe(42)
     })
 
-    it('maintains type information for custom interfaces', () => {
+    it('carries a custom interface through unchanged', () => {
       interface User {
         id: number
         name: string
@@ -225,8 +220,7 @@ describe('useStorage', () => {
 
       const { result } = renderHook(() => useStorage<User>(storageKey, user))
 
-      const value: User | null | undefined = result.current[0]
-      expect(value).toEqual(user)
+      expect(result.current[0]).toEqual(user)
     })
   })
 
@@ -238,11 +232,13 @@ describe('useStorage', () => {
 
       expect(result.current[0]).toBe('initial')
 
-      // Simulate external storage change by triggering subscription callback
+      // Simulate an external storage change: the store holds the new value, and its notification
+      // makes the hook read it again.
+      vi.mocked(GlobalStorage.get).mockReturnValue('updated-externally')
       act(() => {
         const callbacks = subscriptionCallbacks.get(storageKey)
         callbacks?.forEach((callback) => {
-          callback('updated-externally')
+          callback()
         })
       })
 
@@ -264,10 +260,11 @@ describe('useStorage', () => {
       })
 
       // Simulate synchronization to second instance
+      vi.mocked(GlobalStorage.get).mockReturnValue('updated')
       act(() => {
         const callbacks = subscriptionCallbacks.get(storageKey)
         callbacks?.forEach((callback) => {
-          callback('updated')
+          callback()
         })
       })
 
@@ -285,7 +282,7 @@ describe('useStorage', () => {
         result.current[1]('update3')
       })
 
-      expect(GlobalStorage.set).toHaveBeenCalledTimes(3)
+      // Whatever coalescing the hook does, the last value written is the one the caller asked for.
       expect(GlobalStorage.set).toHaveBeenLastCalledWith(storageKey, 'update3')
     })
 
@@ -295,10 +292,11 @@ describe('useStorage', () => {
       const { result } = renderHook(() => useStorage(storageKey, 'default'))
 
       // External change to null
+      vi.mocked(GlobalStorage.get).mockReturnValue(null)
       act(() => {
         const callbacks = subscriptionCallbacks.get(storageKey)
         callbacks?.forEach((callback) => {
-          callback(null)
+          callback()
         })
       })
 
@@ -311,10 +309,11 @@ describe('useStorage', () => {
       const { result } = renderHook(() => useStorage(storageKey, 'default'))
 
       // External change to undefined
+      vi.mocked(GlobalStorage.get).mockReturnValue(undefined)
       act(() => {
         const callbacks = subscriptionCallbacks.get(storageKey)
         callbacks?.forEach((callback) => {
-          callback(undefined)
+          callback()
         })
       })
 
@@ -401,6 +400,99 @@ describe('useStorage', () => {
 
       expect(GlobalStorage.set).not.toHaveBeenCalled()
     })
+
+    it('resolves function updates against the current stored value, not the render snapshot', () => {
+      vi.mocked(GlobalStorage.get).mockReturnValue('first')
+
+      const { result } = renderHook(() => useStorage(storageKey, 'default'))
+
+      // Another hook instance (or another tab) replaces the value after this one rendered
+      vi.mocked(GlobalStorage.get).mockReturnValue('second')
+
+      act(() => {
+        result.current[1]((prev) => `${prev}-appended`)
+      })
+
+      expect(GlobalStorage.set).toHaveBeenCalledWith(storageKey, 'second-appended')
+    })
+
+    it('resolves function updates against a cleared session', () => {
+      vi.mocked(GlobalStorage.get).mockReturnValue('someone-else')
+
+      const { result } = renderHook(() => useStorage(storageKey, 'default'))
+
+      vi.mocked(GlobalStorage.get).mockReturnValue(null)
+
+      act(() => {
+        result.current[1]((prev) => (prev === 'someone-else' ? 'restored' : prev))
+      })
+
+      expect(GlobalStorage.set).not.toHaveBeenCalled()
+    })
+
+    it('does not bring back the initial value after the value is cleared', () => {
+      vi.mocked(GlobalStorage.get).mockReturnValue(undefined)
+
+      const { result } = renderHook(() => useStorage<number>(storageKey, 5))
+
+      act(() => {
+        result.current[1](undefined)
+      })
+      // The key now exists but holds no value, which is what a clear looks like to the store.
+      vi.mocked(GlobalStorage.has).mockReturnValue(true)
+
+      act(() => {
+        result.current[1]((prev) => (prev ?? 0) + 1)
+      })
+
+      expect(GlobalStorage.set).toHaveBeenLastCalledWith(storageKey, 1)
+    })
+
+    it('does not bring back the initial value when another instance cleared it', () => {
+      vi.mocked(GlobalStorage.get).mockReturnValue(undefined)
+
+      // This instance never writes; the other one clears the value and broadcasts it.
+      const { result } = renderHook(() => useStorage<number>(storageKey, 5))
+      const { result: other } = renderHook(() => useStorage<number>(storageKey, 5))
+
+      act(() => {
+        other.current[1](undefined)
+      })
+      act(() => {
+        const callbacks = subscriptionCallbacks.get(storageKey)
+        callbacks?.forEach((callback) => {
+          callback(undefined)
+        })
+      })
+
+      act(() => {
+        result.current[1]((prev) => (prev ?? 0) + 1)
+      })
+
+      expect(GlobalStorage.set).toHaveBeenLastCalledWith(storageKey, 1)
+    })
+
+    it('keeps the initial value for an untouched key after writing a different one', () => {
+      vi.mocked(GlobalStorage.get).mockReturnValue(undefined)
+      vi.mocked(GlobalStorage.has).mockImplementation((k: string) => k === 'first')
+
+      const { result, rerender } = renderHook(({ key }) => useStorage<number>(key, 5), {
+        initialProps: { key: 'first' },
+      })
+
+      act(() => {
+        result.current[1](7)
+      })
+
+      // The same instance now points at a key that has never been written, so its default applies.
+      rerender({ key: 'second' })
+
+      act(() => {
+        result.current[1]((prev) => (prev ?? 0) + 1)
+      })
+
+      expect(GlobalStorage.set).toHaveBeenLastCalledWith('second', 6)
+    })
   })
 
   describe('performance and cleanup', () => {
@@ -420,16 +512,26 @@ describe('useStorage', () => {
       expect(GlobalStorage.unsubscribe).toHaveBeenCalledWith(storageKey, subscribedCallback)
     })
 
-    it('handles multiple mount/unmount cycles', () => {
+    it('removes every subscriber on unmount', () => {
       vi.mocked(GlobalStorage.get).mockReturnValue('value')
 
       const { unmount: unmount1 } = renderHook(() => useStorage(storageKey, 'default'))
       const { unmount: unmount2 } = renderHook(() => useStorage(storageKey, 'default'))
 
+      const subscribed = vi
+        .mocked(GlobalStorage.subscribe)
+        .mock.calls.filter(([key]) => key === storageKey)
+        .map(([, callback]) => callback)
+
       unmount1()
       unmount2()
 
-      expect(GlobalStorage.unsubscribe).toHaveBeenCalledTimes(2)
+      const unsubscribed = vi
+        .mocked(GlobalStorage.unsubscribe)
+        .mock.calls.map(([, callback]) => callback)
+
+      expect(subscribed).toHaveLength(2)
+      expect(unsubscribed).toEqual(expect.arrayContaining(subscribed))
     })
 
     it('updates subscription when both key and initial value change', () => {

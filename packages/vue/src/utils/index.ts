@@ -1,3 +1,4 @@
+export { isBrowser } from './isBrowser'
 export {
   getBrowserInfo,
   getCapacitorInfo,

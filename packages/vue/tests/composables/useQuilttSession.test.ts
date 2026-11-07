@@ -1,6 +1,6 @@
 import { createApp, ref } from 'vue'
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   pingMock: vi.fn(),
@@ -25,8 +25,24 @@ vi.mock('@quiltt/core', async () => {
   }
 })
 
+import { GlobalStorage, markSessionCleared } from '@quiltt/core'
+
 import { useQuilttSession } from '@/composables/useQuilttSession'
 import { QuilttClientIdKey, QuilttSessionKey, QuilttSetSessionKey } from '@/plugin/keys'
+
+/**
+ * Stand-in for the plugin's `setSession`. It writes the slot `adopt` reads back — without a provided
+ * controller the composable uses the shared one — and mirrors into the injected ref as the real
+ * setter does.
+ */
+const createSetSession = (sessionRef: { value: unknown }) =>
+  vi.fn((token: string | null) => {
+    // Records the clear the way the plugin's setter does, so a pending import can tell a sign-out
+    // from nothing having happened.
+    if (!token) markSessionCleared()
+    GlobalStorage.set('session', token)
+    sessionRef.value = token ? { token } : null
+  })
 
 const createToken = (expOffsetSeconds = 3600, eid = 'entity-id') => {
   const now = Math.floor(Date.now() / 1000)
@@ -86,6 +102,12 @@ const mountComposable = <T>(factory: () => T, provide: Array<[symbol, unknown]>)
 }
 
 describe('useQuilttSession', () => {
+  beforeEach(() => {
+    // The composable falls back to the shared slot, and its stand-in setter writes it, so a slot left
+    // behind by the previous test would be read back here.
+    GlobalStorage.set('session', null)
+  })
+
   afterEach(() => {
     mocks.pingMock.mockReset()
     mocks.identifyMock.mockReset()
@@ -97,7 +119,7 @@ describe('useQuilttSession', () => {
     mocks.pingMock.mockResolvedValue({ status: 200 } as any)
 
     const sessionRef = ref(null)
-    const setSession = vi.fn()
+    const setSession = createSetSession(sessionRef)
 
     const { result, unmount } = mountComposable(
       () => useQuilttSession('env_1'),
@@ -115,6 +137,62 @@ describe('useQuilttSession', () => {
     expect(mocks.pingMock).toHaveBeenCalledWith(token)
     expect(setSession).toHaveBeenCalledWith(token)
 
+    unmount()
+  })
+
+  it('does not adopt a token that was signed out while the ping was in flight', async () => {
+    const sessionRef = ref(null)
+    const setSession = vi.fn()
+    const token = createToken(3600, 'env_1')
+
+    const { result, unmount } = mountComposable(
+      () => useQuilttSession('env_1'),
+      [
+        [QuilttSessionKey as unknown as symbol, sessionRef],
+        [QuilttSetSessionKey as unknown as symbol, setSession],
+        [QuilttClientIdKey as unknown as symbol, ref('cid_test')],
+      ]
+    )
+
+    // The caller signs out while the request is in flight.
+    mocks.pingMock.mockImplementation(async () => {
+      sessionRef.value = null
+      markSessionCleared()
+      return { status: 200 } as any
+    })
+
+    expect(await result.importSession(token)).toBe(false)
+    expect(setSession).not.toHaveBeenCalled()
+
+    unmount()
+  })
+
+  it('syncs this app when the slot already holds the token', async () => {
+    const token = createToken(3600, 'env_1')
+    // Another writer already adopted this token into the shared slot, while this app's ref still
+    // shows nothing. Reporting success without updating the ref would leave the user signed out.
+    GlobalStorage.set('session', token)
+    const sessionRef = ref(null)
+    const setSession = vi.fn((next: string | null) => {
+      sessionRef.value = next as never
+    })
+
+    const { result, unmount } = mountComposable(
+      () => useQuilttSession('env_1'),
+      [
+        [QuilttSessionKey as unknown as symbol, sessionRef],
+        [QuilttSetSessionKey as unknown as symbol, setSession],
+        [QuilttClientIdKey as unknown as symbol, ref('cid_test')],
+      ]
+    )
+
+    mocks.pingMock.mockResolvedValue({ status: 200 } as any)
+
+    expect(await result.importSession(token)).toBe(true)
+    expect(setSession).toHaveBeenCalledWith(token)
+    expect(sessionRef.value).toBe(token)
+
+    GlobalStorage.set('session', null)
     unmount()
   })
 
@@ -170,12 +248,158 @@ describe('useQuilttSession', () => {
 
     mocks.pingMock.mockResolvedValueOnce({ status: 401 } as any)
     expect(await result.importSession(token)).toBe(false)
-    expect(setSession).toHaveBeenCalledWith(null)
+    // The rejected token was never stored, so there is no session to end. Clearing the empty slot
+    // would still record a sign-out, which cancels an import waiting on another token.
+    expect(setSession).not.toHaveBeenCalled()
 
     // A different token is not covered by the 401 latch, so it still pings.
     const otherToken = createToken(3600, 'other-entity-id')
     mocks.pingMock.mockResolvedValueOnce({ status: 500 } as any)
     await expect(result.importSession(otherToken)).rejects.toThrow(/Unexpected response status 500/)
+
+    unmount()
+  })
+
+  it('clears the session the rejected token was', async () => {
+    const sessionRef = ref(null)
+    const setSession = createSetSession(sessionRef)
+
+    const { result, unmount } = mountComposable(
+      () => useQuilttSession(),
+      [
+        [QuilttSessionKey as unknown as symbol, sessionRef],
+        [QuilttSetSessionKey as unknown as symbol, setSession],
+        [QuilttClientIdKey as unknown as symbol, ref('cid_test')],
+      ]
+    )
+
+    const token = createToken()
+    GlobalStorage.set('session', token)
+    mocks.pingMock.mockResolvedValueOnce({ status: 401 } as any)
+
+    expect(await result.importSession(token)).toBe(false)
+
+    // The session the server rejected is ended, so the app stops rendering it.
+    expect(setSession).toHaveBeenCalledWith(null)
+    expect(GlobalStorage.get('session')).toBeNull()
+
+    unmount()
+  })
+
+  it('does not cancel an import of another token that is still validating', async () => {
+    const sessionRef = ref(null)
+    const setSession = createSetSession(sessionRef)
+
+    const { result, unmount } = mountComposable(
+      () => useQuilttSession(),
+      [
+        [QuilttSessionKey as unknown as symbol, sessionRef],
+        [QuilttSetSessionKey as unknown as symbol, setSession],
+        [QuilttClientIdKey as unknown as symbol, ref('cid_test')],
+      ]
+    )
+
+    const savedToken = createToken()
+    const freshToken = createToken(3600, 'other-entity-id')
+
+    let answerSaved: (value: { status: number }) => void = () => {}
+    let answerFresh: (value: { status: number }) => void = () => {}
+    mocks.pingMock.mockImplementation(
+      (pinged: string) =>
+        new Promise((resolve) => {
+          if (pinged === savedToken) answerSaved = resolve
+          else answerFresh = resolve
+        })
+    )
+
+    // The saved token is checked first; a fresh one arrives before that check finishes.
+    const savedImport = result.importSession(savedToken)
+    const freshImport = result.importSession(freshToken)
+
+    // The saved token comes back rejected while the fresh import is still waiting for its answer.
+    answerSaved({ status: 401 })
+    expect(await savedImport).toBe(false)
+
+    answerFresh({ status: 200 })
+    expect(await freshImport).toBe(true)
+
+    // Rejecting a token that was never stored says nothing about the token being signed in with.
+    expect(GlobalStorage.get('session')).toBe(freshToken)
+
+    unmount()
+  })
+
+  it('does not adopt a token another import of it had rejected', async () => {
+    const sessionRef = ref(null)
+    const setSession = createSetSession(sessionRef)
+
+    const { result, unmount } = mountComposable(
+      () => useQuilttSession(),
+      [
+        [QuilttSessionKey as unknown as symbol, sessionRef],
+        [QuilttSetSessionKey as unknown as symbol, setSession],
+        [QuilttClientIdKey as unknown as symbol, ref('cid_test')],
+      ]
+    )
+
+    const token = createToken()
+
+    let reject: (value: { status: number }) => void = () => {}
+    let answer: (value: { status: number }) => void = () => {}
+    mocks.pingMock.mockImplementation(() =>
+      mocks.pingMock.mock.calls.length === 1
+        ? new Promise((resolve) => {
+            reject = resolve
+          })
+        : new Promise((resolve) => {
+            answer = resolve
+          })
+    )
+
+    const first = result.importSession(token)
+    const second = result.importSession(token)
+
+    reject({ status: 401 })
+    expect(await first).toBe(false)
+
+    // The rejection ended no session here: there was none to end.
+    expect(setSession).not.toHaveBeenCalled()
+
+    // The server has already said the token is dead, so the second answer does not revive it.
+    answer({ status: 200 })
+    expect(await second).toBe(false)
+    expect(GlobalStorage.get('session')).toBeNull()
+
+    unmount()
+  })
+
+  it('does not clear a session that signed in during the 401 ping', async () => {
+    const sessionRef = ref(null)
+    const setSession = vi.fn()
+
+    const { result, unmount } = mountComposable(
+      () => useQuilttSession(),
+      [
+        [QuilttSessionKey as unknown as symbol, sessionRef],
+        [QuilttSetSessionKey as unknown as symbol, setSession],
+        [QuilttClientIdKey as unknown as symbol, ref('cid_test')],
+      ]
+    )
+
+    const token = createToken()
+    const newerToken = createToken(3600, 'other-entity-id')
+
+    mocks.pingMock.mockImplementationOnce(async () => {
+      // A sign-in that lands while this request is in flight
+      GlobalStorage.set('session', newerToken)
+      return { status: 401 }
+    })
+
+    expect(await result.importSession(token)).toBe(false)
+
+    // The rejection is about the token that was pinged, which is no longer the one in place.
+    expect(setSession).not.toHaveBeenCalled()
+    expect(GlobalStorage.get('session')).toBe(newerToken)
 
     unmount()
   })
@@ -327,6 +551,40 @@ describe('useQuilttSession', () => {
     unmount()
   })
 
+  it('does not clear a session that signed in while the revoke was in flight', async () => {
+    const sessionRef = ref({ token: 'header.revoked.signature' } as any)
+    const setSession = vi.fn()
+
+    const { result, unmount } = mountComposable(
+      () => useQuilttSession(),
+      [
+        [QuilttSessionKey as unknown as symbol, sessionRef],
+        [QuilttSetSessionKey as unknown as symbol, setSession],
+        [QuilttClientIdKey as unknown as symbol, ref('cid_test')],
+      ]
+    )
+
+    let answerRevoke: (value: unknown) => void = () => {}
+    mocks.revokeMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          answerRevoke = resolve
+        })
+    )
+
+    const revokedCall = result.revokeSession()
+
+    // A sign-in with a different token lands while the revoke request is in flight.
+    sessionRef.value = { token: 'header.newer.signature' } as any
+    answerRevoke(undefined)
+    await revokedCall
+
+    // The session this call revoked is no longer the one in place, so it is not this call's to end.
+    expect(setSession).not.toHaveBeenCalled()
+
+    unmount()
+  })
+
   it('forgets session only when token matches current session', () => {
     const sessionRef = ref({ token: 'token_current' } as any)
     const setSession = vi.fn()
@@ -356,7 +614,7 @@ describe('useQuilttSession', () => {
     // Session is pre-populated (as if restored from localStorage) but importSession
     // has never been called for this token, so validatedToken is not set.
     const sessionRef = ref({ token } as any)
-    const setSession = vi.fn()
+    const setSession = createSetSession(sessionRef)
 
     const { result, unmount } = mountComposable(
       () => useQuilttSession(),
@@ -381,9 +639,7 @@ describe('useQuilttSession', () => {
 
     const token = createToken(3600, 'env_1')
     const sessionRef = ref(null as any)
-    const setSession = vi.fn((t: string | null) => {
-      sessionRef.value = t ? { token: t } : null
-    })
+    const setSession = createSetSession(sessionRef)
 
     const { result, unmount } = mountComposable(
       () => useQuilttSession(),
@@ -412,9 +668,7 @@ describe('useQuilttSession', () => {
 
     const token = createToken(3600, 'env_1')
     const sessionRef = ref(null as any)
-    const setSession = vi.fn((t: string | null) => {
-      sessionRef.value = t ? { token: t } : null
-    })
+    const setSession = createSetSession(sessionRef)
 
     const { result, unmount } = mountComposable(
       () => useQuilttSession(),
@@ -444,9 +698,7 @@ describe('useQuilttSession', () => {
 
     const token = createToken(3600, 'env_1')
     const sessionRef = ref(null as any)
-    const setSession = vi.fn((t: string | null) => {
-      sessionRef.value = t ? { token: t } : null
-    })
+    const setSession = createSetSession(sessionRef)
 
     const { result, unmount } = mountComposable(
       () => useQuilttSession(),
@@ -479,9 +731,7 @@ describe('useQuilttSession', () => {
 
     const token = createToken(3600, 'env_1')
     const sessionRef = ref(null as any)
-    const setSession = vi.fn((t: string | null) => {
-      sessionRef.value = t ? { token: t } : null
-    })
+    const setSession = createSetSession(sessionRef)
 
     // First composable instance: validated for env_1
     const { result: result1, unmount: unmount1 } = mountComposable(
@@ -523,9 +773,7 @@ describe('useQuilttSession', () => {
 
     const token = createToken(3600, 'env_1')
     const sessionRef = ref(null as any)
-    const setSession = vi.fn((t: string | null) => {
-      sessionRef.value = t ? { token: t } : null
-    })
+    const setSession = createSetSession(sessionRef)
 
     const { result, unmount } = mountComposable(
       () => useQuilttSession(),
@@ -548,7 +796,7 @@ describe('useQuilttSession', () => {
   it('returns sessionRef truthiness when token is empty string', async () => {
     const token = createToken(3600, 'env_1')
     const sessionRef = ref({ token } as any)
-    const setSession = vi.fn()
+    const setSession = createSetSession(sessionRef)
 
     const { result, unmount } = mountComposable(
       () => useQuilttSession(),

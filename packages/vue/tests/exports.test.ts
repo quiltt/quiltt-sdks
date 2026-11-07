@@ -1,13 +1,18 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
+import type { SessionController, SessionTokenSource, SetToken } from '@/index'
 import * as VueExports from '@/index'
 import {
   AuthAPI,
   ConnectorsAPI,
+  createSessionController,
+  GlobalStorage,
   QuilttButton,
   QuilttContainer,
   QuilttPlugin,
   QuilttSessionKey,
+  SESSION_STORAGE_KEY,
+  sharedSessionTokenSource,
   useQuilttConnector,
   useQuilttInstitutions,
   useQuilttResolvable,
@@ -24,6 +29,21 @@ describe('@quiltt/vue exports', () => {
   ])('re-exports %s from @quiltt/core', (_name, exported) => {
     expect(exported).toBeDefined()
     expect(typeof exported).toBe('function')
+  })
+
+  it('re-exports the session helpers from @quiltt/core', () => {
+    GlobalStorage.set(SESSION_STORAGE_KEY, null)
+
+    const set = vi.fn<SetToken>((token) => GlobalStorage.set(SESSION_STORAGE_KEY, token))
+    const controller: SessionController = createSessionController(set)
+    const source: SessionTokenSource = sharedSessionTokenSource
+
+    expect(SESSION_STORAGE_KEY).toBe('session')
+    expect(typeof source.read).toBe('function')
+
+    // The real implementation, not a re-exported stub: adopting an unchanged slot writes through.
+    expect(controller.adopt('session-token', controller.snapshot())).toBe(true)
+    expect(set).toHaveBeenCalledWith('session-token')
   })
 
   it.each([

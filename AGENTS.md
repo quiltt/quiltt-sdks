@@ -282,9 +282,9 @@ Load `changeset-fragment` skill when creating or editing a changeset.
 pnpm changeset     # Interactive prompt to create a changeset
 ```
 
-- All 8 packages version together (fixed group in `.changeset/config.json`), so they can never release partially
+- All 8 packages are bumped at the same time and share one version (fixed group in `.changeset/config.json`), so they always match across platforms and can never release partially — a fragment therefore uses one bump type on every package it lists
 - A package added under `packages/` must be added to that `fixed` list in the same PR, or it versions on its own
-- List every package whose behaviour changed — those are the ones whose `CHANGELOG.md` records the change
+- List every package — all 8 — in every fragment: each package's `CHANGELOG.md` records the change, including platform wrappers that only re-export it (`@quiltt/react-native`, `@quiltt/capacitor`) and the native SDKs with no JavaScript surface (`@quiltt/android`, `@quiltt/ios`, `@quiltt/flutter`)
 - Types: `major` (breaking), `minor` (new features), `patch` (bug fixes)
 
 ### Key Reference Files

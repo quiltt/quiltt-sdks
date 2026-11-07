@@ -25,21 +25,27 @@ export type UseQuilttSession = (environmentId?: string) => {
   authenticateSession: AuthenticateSession
   revokeSession: RevokeSession
   forgetSession: (token?: string) => Promise<void>
+  /**
+   * Whether `session` has been read from the browser's storage yet. `false` only before the first
+   * client commit, where a server render could not read storage and an empty `session` does not mean
+   * signed out. @see useStorage
+   */
+  restored: boolean
 }
 
 export const useQuilttSession: UseQuilttSession = (environmentId) => {
   const { clientId, headers } = useQuilttSettings()
-  const [session, setSession] = useSession()
+  const [session, setSession, controller, restored] = useSession()
 
   const sdkAgent = useMemo(() => getSDKAgent(version), [])
   const auth = useMemo(
     () => new AuthAPI(clientId, headers, sdkAgent),
     [clientId, headers, sdkAgent]
   )
-  const importSession = useImportSession(auth, session, setSession, environmentId)
+  const importSession = useImportSession(auth, session, setSession, environmentId, controller)
   const identifySession = useIdentifySession(auth, setSession)
   const authenticateSession = useAuthenticateSession(auth, setSession)
-  const revokeSession = useRevokeSession(auth, session, setSession)
+  const revokeSession = useRevokeSession(auth, session, setSession, controller)
 
   /**
    * Forget current session.
@@ -61,5 +67,6 @@ export const useQuilttSession: UseQuilttSession = (environmentId) => {
     authenticateSession,
     revokeSession,
     forgetSession,
+    restored,
   }
 }

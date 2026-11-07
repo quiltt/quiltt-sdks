@@ -39,7 +39,11 @@ export class LocalStorage<T = any> {
     const fullKey = this.getFullKey(key)
     try {
       const state = storage.getItem(fullKey)
-      return state ? (JSON.parse(state) as T) : null
+      // A missing key and a cleared one are different states: the first reads `undefined` because no
+      // default has been overridden, the second reads `null` because the app cleared it and a default
+      // must not come back. `set` writes clears as `null`, so a key that is simply absent is one that
+      // was never written.
+      return state === null ? undefined : (JSON.parse(state) as T | null)
     } catch (error) {
       console.warn(`localStorage Error: "${fullKey}"`, error)
       return undefined
@@ -52,11 +56,11 @@ export class LocalStorage<T = any> {
 
     const fullKey = this.getFullKey(key)
     try {
-      if (state !== null && state !== undefined) {
-        storage.setItem(fullKey, JSON.stringify(state))
-      } else {
-        storage.removeItem(fullKey)
-      }
+      // A cleared key is written as `null` rather than removed. Removing it would make it
+      // indistinguishable from one that was never written, so after a reload a caller's default would
+      // come back over a value the app had deliberately cleared. `undefined` is not representable in
+      // JSON, so it is stored the same way and read back as `null`.
+      storage.setItem(fullKey, JSON.stringify(state ?? null))
     } catch (error) {
       console.warn(`localStorage Error: "${fullKey}"`, error)
     }
@@ -75,7 +79,18 @@ export class LocalStorage<T = any> {
   }
 
   has = (key: string): boolean => {
-    return this.get(key) !== null && this.get(key) !== undefined
+    const storage = this.getStorage()
+    if (!storage) return false
+
+    const fullKey = this.getFullKey(key)
+    try {
+      return storage.getItem(fullKey) !== null
+    } catch (error) {
+      // Reading can throw (blocked storage, security errors). Callers ask this during render, so
+      // an escaping error would crash them; report the key as absent and let them fall back.
+      console.warn(`localStorage Error: "${fullKey}"`, error)
+      return false
+    }
   }
 
   clear = (): void => {

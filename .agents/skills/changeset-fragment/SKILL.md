@@ -40,14 +40,38 @@ names, and one bump type per package.
 
 ## Bump Types
 
-All 8 packages version together (fixed group), so one bump type applies to
-every package:
+All 8 packages are bumped at the same time and released on one shared version,
+so they always match across every platform:
 
 | Type | When | Example |
 |------|------|---------|
 | `patch` | Bug fixes, minor updates, non-breaking improvements | `1.0.0 → 1.0.1` |
 | `minor` | New features, backwards-compatible changes | `1.0.0 → 1.1.0` |
 | `major` | Breaking changes | `1.0.0 → 2.0.0` |
+
+### One Bump Type per Fragment
+
+Because every package lands on the same version, a fragment declares **one**
+bump type and uses it on every package it lists. Never mix them:
+
+```yaml
+# Wrong: reads as "core and react get a minor, vue gets a patch". That release
+# cannot happen — vue ships the same 1.1.0 as the rest.
+"@quiltt/core": minor
+"@quiltt/react": minor
+"@quiltt/vue": patch
+```
+
+```yaml
+# Right: the most significant change in the PR sets the version for all of them.
+"@quiltt/core": minor
+"@quiltt/react": minor
+"@quiltt/vue": minor
+```
+
+Changesets resolves a fixed group to its highest declared bump, so a lower one
+does not hold a package back — it only makes that package's changelog claim a
+release that never happened.
 
 ---
 
@@ -69,33 +93,43 @@ The front matter looks like:
 
 ## Package Selection
 
-List **every package whose behaviour changed** — not every package that will be
-released. The two are different:
+List **every package — all 8 — in every fragment**. The fixed group versions
+them together and releases them on one shared version, so a change ships to
+every platform at once, and each package's `CHANGELOG.md` should say why its
+version moved:
 
 - The fixed group versions all 8 packages whatever you list.
 - Only the packages you list get the summary in their `CHANGELOG.md`. A package
-  that bumps without being listed records just an `Updated dependencies` entry.
-
-So listing too few packages silently loses changelog coverage, and listing too
-many writes a summary into a package that did not change — misleading for
-anyone reading that package's history.
-
-A change confined to one package is one line:
+  that bumps without being listed records just an `Updated dependencies` entry,
+  which leaves its readers unable to tell what changed.
 
 ```yaml
 ---
 "@quiltt/core": patch
----
-```
-
-A change to the shared React and Vue session logic is two:
-
-```yaml
----
 "@quiltt/react": patch
+"@quiltt/react-native": patch
 "@quiltt/vue": patch
+"@quiltt/capacitor": patch
+"@quiltt/android": patch
+"@quiltt/flutter": patch
+"@quiltt/ios": patch
 ---
 ```
+
+Keep the order used in `.changeset/config.json`, so a fragment can be checked
+against the group at a glance.
+
+### Platform Wrappers Ship What They Re-export
+
+`@quiltt/react-native` (`export * from '@quiltt/react/hooks'`) and
+`@quiltt/capacitor` (`@quiltt/capacitor/react` and `@quiltt/capacitor/vue`
+re-export the framework packages) run the same code as the framework packages
+they wrap, and `@quiltt/android`, `@quiltt/ios`, and `@quiltt/flutter` have no
+JavaScript surface at all. They are all listed anyway, because all 8 ship as one
+release: a reader of any of those changelogs should be able to tell what moved
+and when. Write the summary so it still reads correctly in a package that only
+carries the change through a re-export — name the package whose code changed,
+and describe the behaviour rather than the implementation.
 
 ---
 
@@ -201,7 +235,7 @@ into the release changelog.
 
 1. Make code changes on a feature branch
 2. Run `pnpm changeset`
-3. Select every package whose behaviour changed
+3. Select all 8 packages
 4. Choose the bump type (`patch` / `minor` / `major`) — it applies to all 8
 5. Write the summary following the style guide above
 6. Commit the generated `.changeset/*.md` file with your code changes

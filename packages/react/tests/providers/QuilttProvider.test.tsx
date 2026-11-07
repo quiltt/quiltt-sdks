@@ -25,6 +25,10 @@ vi.mock('@quiltt/core', async (importOriginal) => {
   return {
     ...(actual as any),
     QuilttClient: MockQuilttClient,
+    // The provider reads the stored session during render to tell a mount-time restore apart from a
+    // session change. Keep the real store's machinery; none is available in this test.
+    GlobalStorage: { ...(actual as any).GlobalStorage, get: () => undefined },
+    SESSION_STORAGE_KEY: 'session',
   }
 })
 

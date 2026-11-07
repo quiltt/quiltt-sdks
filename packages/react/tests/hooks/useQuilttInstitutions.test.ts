@@ -5,6 +5,16 @@ import type { QuilttJWT } from '@quiltt/core'
 
 import { useQuilttInstitutions } from '@/hooks/useQuilttInstitutions'
 
+// `useSession` returns a setter tagged with the slot it writes, and the controller that pairs the two;
+// these tests never exercise either, so stubs keep the mock in shape.
+const stubSetSession = () => Object.assign(vi.fn(), { storageKey: 'session' })
+
+const stubController = (setSession: unknown) => ({
+  set: setSession as never,
+  snapshot: () => ({ token: null, revision: 0 }),
+  adopt: () => true,
+})
+
 vi.mock('@/hooks/useQuilttSettings', () => ({
   useQuilttSettings: vi.fn().mockReturnValue({ clientId: 'test-client-id' }),
 }))
@@ -53,7 +63,7 @@ describe('useQuilttInstitutions', async () => {
     vi.clearAllMocks()
     mockConsoleError.mockClear()
 
-    mockUseSession.mockReturnValue([mockSession, vi.fn()])
+    mockUseSession.mockReturnValue([mockSession, stubSetSession(), stubController(vi.fn()), true])
     mockSearchInstitutions.mockResolvedValue({
       status: 200,
       data: [],
@@ -372,7 +382,7 @@ describe('useQuilttInstitutions', async () => {
      * Verifies guard condition prevents API calls without valid session
      */
     it('does not make API call when session token is null', async () => {
-      mockUseSession.mockReturnValue([null, vi.fn()])
+      mockUseSession.mockReturnValue([null, stubSetSession(), stubController(vi.fn()), true])
 
       const { result } = renderHook(() => useQuilttInstitutions('mockConnectorId', vi.fn()))
 
