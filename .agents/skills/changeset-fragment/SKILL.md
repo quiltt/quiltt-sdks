@@ -93,43 +93,61 @@ The front matter looks like:
 
 ## Package Selection
 
-List **every package — all 8 — in every fragment**. The fixed group versions
-them together and releases them on one shared version, so a change ships to
-every platform at once, and each package's `CHANGELOG.md` should say why its
-version moved:
+List **only the packages whose behaviour changed** — not every package that will
+be released. The two are different:
 
-- The fixed group versions all 8 packages whatever you list.
-- Only the packages you list get the summary in their `CHANGELOG.md`. A package
-  that bumps without being listed records just an `Updated dependencies` entry,
-  which leaves its readers unable to tell what changed.
+- The fixed group versions and releases all 8 packages whatever you list, so a
+  fragment that names one package still ships to every platform.
+- Only the packages you list get the summary in their `CHANGELOG.md`. Packages
+  that bump without being listed record at most an `Updated dependencies` entry.
+
+Because `CHANGELOG.md` is read per package, listing a package writes this
+fragment's summary into that package's history. Listing one that did not change
+attributes work to the wrong package, and the reader cannot tell which of the
+entries they have to act on. So listing too few loses changelog coverage, and
+listing too many misleads.
+
+A change confined to one package is one line:
 
 ```yaml
 ---
 "@quiltt/core": patch
+---
+```
+
+A change to the shared React and Vue session logic is two:
+
+```yaml
+---
 "@quiltt/react": patch
-"@quiltt/react-native": patch
 "@quiltt/vue": patch
-"@quiltt/capacitor": patch
-"@quiltt/android": patch
-"@quiltt/flutter": patch
-"@quiltt/ios": patch
 ---
 ```
 
 Keep the order used in `.changeset/config.json`, so a fragment can be checked
 against the group at a glance.
 
-### Platform Wrappers Ship What They Re-export
+A release therefore normally leaves some packages with a bare version heading
+and no notes — `android`, `ios` and `flutter` most often, since they have no
+JavaScript surface — and `@quiltt/capacitor` with only its `Updated dependencies`
+entry. That is expected: it records that the package moved to stay in step,
+without claiming a change it did not have.
+
+### Platform Wrappers
 
 `@quiltt/react-native` (`export * from '@quiltt/react/hooks'`) and
 `@quiltt/capacitor` (`@quiltt/capacitor/react` and `@quiltt/capacitor/vue`
 re-export the framework packages) run the same code as the framework packages
 they wrap, and `@quiltt/android`, `@quiltt/ios`, and `@quiltt/flutter` have no
-JavaScript surface at all. They are all listed anyway, because all 8 ship as one
-release: a reader of any of those changelogs should be able to tell what moved
-and when. Write the summary so it still reads correctly in a package that only
-carries the change through a re-export — name the package whose code changed,
-and describe the behaviour rather than the implementation.
+JavaScript surface at all.
+
+List a wrapper when the fragment has something true to say about it — a change
+to the wrapper itself, or a change that only reaches users through it. An app on
+`@quiltt/react-native` imports the same hooks as one on `@quiltt/react`, so a
+hook fix is worth listing there; a fix to a Vue composable is not, and belongs
+only in `@quiltt/vue`. Keep the summary readable in a package that carries the
+change through a re-export: name the package whose code changed, and describe
+the behaviour rather than the implementation.
 
 ---
 
@@ -235,8 +253,8 @@ into the release changelog.
 
 1. Make code changes on a feature branch
 2. Run `pnpm changeset`
-3. Select all 8 packages
-4. Choose the bump type (`patch` / `minor` / `major`) — it applies to all 8
+3. Select every package whose behaviour changed
+4. Choose the bump type (`patch` / `minor` / `major`) — it applies to the group
 5. Write the summary following the style guide above
 6. Commit the generated `.changeset/*.md` file with your code changes
 7. Push and open a PR
