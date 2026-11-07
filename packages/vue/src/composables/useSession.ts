@@ -1,14 +1,14 @@
 import { computed, onUnmounted, ref, watch } from 'vue'
 
 import type { Maybe, PrivateClaims, QuilttJWT } from '@quiltt/core'
-import { JsonWebTokenParse, Timeoutable } from '@quiltt/core'
+import { JsonWebTokenParse, SESSION_STORAGE_KEY, Timeoutable } from '@quiltt/core'
 
 import { useStorage } from './useStorage'
 
 const parse = JsonWebTokenParse<PrivateClaims>
 const sessionTimer = new Timeoutable()
 
-export const useSession = (storageKey = 'session') => {
+export const useSession = (storageKey = SESSION_STORAGE_KEY) => {
   const { storage: token, setStorage } = useStorage<string>(storageKey)
   const session = ref<Maybe<QuilttJWT> | undefined>(parse(token.value))
   let currentExpire: (() => void) | null = null

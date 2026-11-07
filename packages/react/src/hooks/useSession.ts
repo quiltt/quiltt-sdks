@@ -111,7 +111,13 @@ export const useSession = (
     if (!session) return
 
     const expirationMS = session.claims.exp * 1000
-    const expire = () => setSession(null)
+    // A newer session can be adopted while this timer waits — the previous session's expiry can land
+    // between that write and the re-render that re-registers this effect. Clearing then would sign the
+    // newer session out, so ask the slot what it holds rather than trusting the session this effect
+    // was built for. @see QuilttPlugin's expireSession
+    const expire = () => {
+      if (GlobalStorage.get(storageKey) === session.token) setSession(null)
+    }
 
     const checkExpiration = () => {
       if (Date.now() >= expirationMS) {
@@ -147,7 +153,22 @@ export const useSession = (
         document.removeEventListener('visibilitychange', handleVisibilityChange)
       }
     }
-  }, [session, setSession])
+  }, [session, setSession, storageKey])
+
+  // A clear that arrives from another tab — or from another Quiltt app on the page — has to count as a
+  // sign-out here too. The slot then looks exactly as it did when a waiting import snapshotted it, so
+  // without this that import would adopt its token and bring the session back. @see SessionController
+  useEffect(() => {
+    let previous = GlobalStorage.get(storageKey)
+    const recordObservedClear = (next: Maybe<string> | undefined) => {
+      if (!next && previous) markSessionCleared(storageKey)
+      previous = next
+    }
+
+    GlobalStorage.subscribe(storageKey, recordObservedClear)
+
+    return () => GlobalStorage.unsubscribe(storageKey, recordObservedClear)
+  }, [storageKey])
 
   return [session, setSession, controller, restored]
 }

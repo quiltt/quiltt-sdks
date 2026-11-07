@@ -30,11 +30,12 @@ vi.mock('@quiltt/core', async () => {
   return { ...actual, AuthAPI: MockAuthAPI }
 })
 
-import { GlobalStorage, gql, type QuilttClient } from '@quiltt/core'
+import { GlobalStorage, gql, type QuilttClient, type SessionController } from '@quiltt/core'
 import { DefaultApolloClient } from '@vue/apollo-composable'
 
 import type { UseQuilttSessionReturn } from '@/composables/useQuilttSession'
 import { useQuilttSession } from '@/composables/useQuilttSession'
+import { QuilttSessionControllerKey } from '@/plugin/keys'
 import { QuilttPlugin } from '@/plugin/QuilttPlugin'
 
 const createToken = (expOffsetSeconds = 3600) => {
@@ -72,6 +73,7 @@ const createToken = (expOffsetSeconds = 3600) => {
 const mountRequest = () => {
   let session!: UseQuilttSessionReturn
   let client!: QuilttClient
+  let controller!: SessionController
   const root = document.createElement('div')
   document.body.appendChild(root)
 
@@ -79,6 +81,7 @@ const mountRequest = () => {
     setup() {
       session = useQuilttSession()
       client = inject(DefaultApolloClient) as QuilttClient
+      controller = inject(QuilttSessionControllerKey) as SessionController
       return () => null
     },
   })
@@ -87,6 +90,7 @@ const mountRequest = () => {
 
   return {
     client,
+    controller,
     session,
     unmount: () => {
       app.unmount()
@@ -186,6 +190,31 @@ describe('QuilttPlugin on a server', () => {
     expect(await imported).toBe(false)
     expect(request.session.session.value).toBeFalsy()
 
+    request.unmount()
+  })
+
+  it("guards the request's own session, not the shared store", async () => {
+    mocks.pingMock.mockResolvedValue({ status: 200, data: {} })
+
+    // A session another request left in the process-wide store, in place before this one renders.
+    const otherRequestToken = createToken()
+    GlobalStorage.set('session', otherRequestToken)
+
+    const request = mountRequest()
+    const token = createToken(7200)
+
+    // The request does not render that session.
+    expect(request.session.session.value).toBeFalsy()
+
+    // A controller that read the store would snapshot that other token, then read it back after
+    // writing this request's session, and report the adoption as failed.
+    expect(await request.session.importSession(token)).toBe(true)
+
+    expect(request.controller.snapshot().token).toBe(token)
+    // And it left the other request's session untouched, rather than writing this one over it.
+    expect(GlobalStorage.get('session')).toBe(otherRequestToken)
+
+    GlobalStorage.set('session', null)
     request.unmount()
   })
 
