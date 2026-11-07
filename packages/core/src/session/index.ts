@@ -41,8 +41,10 @@ export interface SessionController {
    * and the session the caller asked for is active either way. Returns `false` when something else
    * got there first, which is what stops a sign-out during an async step from being undone.
    *
-   * The check and the write happen without an intervening `await`, so they cannot interleave, and
-   * the slot is read back afterwards: `true` only when it really holds `token`.
+   * The setter runs on every path that reports success, including when the slot already held the
+   * token, so a setter that wraps the write is always notified. Setters ignore a value the slot
+   * already holds. The check, the write, and the read-back happen without an intervening `await`, so
+   * they cannot interleave — and `true` means the slot really holds `token`.
    */
   adopt: (token: string, since: SessionSnapshot) => boolean
 }
@@ -129,9 +131,9 @@ export const createSessionController = (
   snapshot: () => ({ token: slot.read(), revision: slot.clearCount() }),
   adopt: (token, since) => {
     const current = slot.read()
+    const moved = current !== since.token || slot.clearCount() !== since.revision
 
-    if (current === token) return true
-    if (current !== since.token || slot.clearCount() !== since.revision) return false
+    if (current !== token && moved) return false
 
     set(token)
 

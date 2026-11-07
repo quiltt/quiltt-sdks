@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
 
 import type { AuthAPI, QuilttJWT } from '@quiltt/core'
+import { createSessionController, GlobalStorage } from '@quiltt/core'
 
 import { useRevokeSession } from '@/hooks/session/useRevokeSession'
 import type { SetSession } from '@/hooks/useSession'
@@ -35,6 +36,26 @@ const createTestJWT = (overrides?: Partial<QuilttJWT>): QuilttJWT => ({
   },
   ...overrides,
 })
+
+/** A slot a controller can be bound to, standing in for the slot a `useSession` holds. */
+const createTestSlot = (token: string | null) => {
+  const slot = {
+    token,
+    read: () => slot.token,
+    clearCount: () => 0,
+  }
+
+  return slot
+}
+
+/** A setter for a test slot, tagged the way `useSession`'s setter is. */
+const createTestSetSession = (slot: { token: string | null }, storageKey = 'session') =>
+  Object.assign(
+    vi.fn((next: string | null) => {
+      slot.token = next ?? null
+    }),
+    { storageKey }
+  ) as unknown as SetSession
 
 describe('useRevokeSession', () => {
   let mockAuth: ReturnType<typeof createMockAuthAPI>
@@ -94,6 +115,161 @@ describe('useRevokeSession', () => {
       ).rejects.toThrow('Network error')
 
       expect(mockAuth.revoke).toHaveBeenCalledWith(testSession.token)
+    })
+
+    it('does not clear a session adopted while the revoke was in flight', async () => {
+      const revoked = createTestJWT({ token: 'header.revoked.signature' })
+      const newer = createTestJWT({ token: 'header.newer.signature' })
+
+      let answerRevoke: (value: { status: number }) => void = () => {}
+      mockAuth.revoke.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            answerRevoke = resolve
+          })
+      )
+
+      const slot = createTestSlot(revoked.token)
+      // The hook clears through this setter, and the controller reads back the slot it writes, so the
+      // slot below is what a regression would change.
+      const setSession = createTestSetSession(slot)
+      const controller = createSessionController(setSession, 'revoke-race-session', slot)
+
+      const { result } = renderHook(() =>
+        useRevokeSession(mockAuth as unknown as AuthAPI, revoked, setSession, controller)
+      )
+
+      const revokedCall = result.current()
+
+      // A sign-in with a different token lands while the revoke request is in flight.
+      slot.token = newer.token
+      answerRevoke({ status: 204 })
+      await act(async () => {
+        await revokedCall
+      })
+
+      // The session this call revoked is no longer the one in place, so it is not this call's to end.
+      expect(setSession).not.toHaveBeenCalled()
+      expect(slot.token).toBe(newer.token)
+    })
+
+    it('clears a session that is still the one it revoked', async () => {
+      const revoked = createTestJWT({ token: 'header.still.current.signature' })
+
+      let answerRevoke: (value: { status: number }) => void = () => {}
+      mockAuth.revoke.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            answerRevoke = resolve
+          })
+      )
+
+      const slot = createTestSlot(revoked.token)
+      const setSession = createTestSetSession(slot)
+      const controller = createSessionController(setSession, 'revoke-current-session', slot)
+
+      const { result } = renderHook(() =>
+        useRevokeSession(mockAuth as unknown as AuthAPI, revoked, setSession, controller)
+      )
+
+      const revokedCall = result.current()
+
+      answerRevoke({ status: 204 })
+      await act(async () => {
+        await revokedCall
+      })
+
+      // Nothing replaced it, so the revoke ends it.
+      expect(setSession).toHaveBeenCalledWith(null)
+      expect(slot.token).toBeNull()
+    })
+
+    it('does not write a clear when the session was already gone', async () => {
+      const revoked = createTestJWT({ token: 'header.already.gone.signature' })
+      mockAuth.revoke.mockResolvedValue({ status: 204 })
+
+      const slot = createTestSlot(null)
+      const setSession = createTestSetSession(slot)
+      const controller = createSessionController(setSession, 'revoke-gone-session', slot)
+
+      const { result } = renderHook(() =>
+        useRevokeSession(mockAuth as unknown as AuthAPI, revoked, setSession, controller)
+      )
+
+      await act(async () => {
+        await result.current()
+      })
+
+      // Clearing here would record a sign-out, cancelling an import waiting on another token.
+      expect(setSession).not.toHaveBeenCalled()
+    })
+
+    it('does not clear a session adopted while the revoke was in flight, given only the setter', async () => {
+      const revoked = createTestJWT({ token: 'header.revoked.by.setter.signature' })
+      const newer = createTestJWT({ token: 'header.newer.by.setter.signature' })
+      const key = 'revoke-setter-race-session'
+
+      let answerRevoke: (value: { status: number }) => void = () => {}
+      mockAuth.revoke.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            answerRevoke = resolve
+          })
+      )
+
+      // `useSession`'s setter reports the slot it writes, so a caller passing only the setter gets the
+      // guard without having to pass the controller too. The controller derived from it reads the
+      // shared slot for that key, so that is where the stand-in setter writes.
+      GlobalStorage.set(key, revoked.token)
+      const setSession = Object.assign(
+        vi.fn((next: string | null) => {
+          GlobalStorage.set(key, next)
+        }),
+        { storageKey: key }
+      ) as unknown as SetSession
+
+      const { result } = renderHook(() =>
+        useRevokeSession(mockAuth as unknown as AuthAPI, revoked, setSession)
+      )
+
+      const revokedCall = result.current()
+
+      // A sign-in with a different token lands while the revoke request is in flight.
+      GlobalStorage.set(key, newer.token)
+      answerRevoke({ status: 204 })
+      await act(async () => {
+        await revokedCall
+      })
+
+      expect(setSession).not.toHaveBeenCalled()
+      expect(GlobalStorage.get(key)).toBe(newer.token)
+
+      GlobalStorage.set(key, null)
+    })
+
+    it('clears a session that is still the one it revoked, given only the setter', async () => {
+      const revoked = createTestJWT({ token: 'header.still.current.by.setter.signature' })
+      const key = 'revoke-setter-current-session'
+
+      mockAuth.revoke.mockResolvedValue({ status: 204 })
+      GlobalStorage.set(key, revoked.token)
+      const setSession = Object.assign(
+        vi.fn((next: string | null) => {
+          GlobalStorage.set(key, next)
+        }),
+        { storageKey: key }
+      ) as unknown as SetSession
+
+      const { result } = renderHook(() =>
+        useRevokeSession(mockAuth as unknown as AuthAPI, revoked, setSession)
+      )
+
+      await act(async () => {
+        await result.current()
+      })
+
+      expect(setSession).toHaveBeenCalledWith(null)
+      expect(GlobalStorage.get(key)).toBeNull()
     })
   })
 

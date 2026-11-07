@@ -188,22 +188,34 @@ export const useQuilttSession = (environmentId?: string): UseQuilttSessionReturn
     const response = await auth.ping(token)
     switch (response.status) {
       case 200:
-        if (!controller.adopt(token, sessionAtCall)) return false
+        // Another import of this token may have been rejected while this request was in flight. The
+        // server said the token is dead, so this response does not bring it back to life.
+        if (validatedState.rejectedTokens.has(token)) return false
 
-        // Adoption writes nothing when the slot already held this token, so the ref below can still
-        // be showing an older session (or none). Point it at the session that is now active.
-        if (sessionRef.value?.token !== token) setSession(token)
+        // Reported as not imported when the session moved on, since the token was not adopted. The
+        // setter runs inside `adopt`, which mirrors the session into this app's ref itself, so it is
+        // called exactly once either way.
+        if (!controller.adopt(token, sessionAtCall)) return false
 
         validatedState.token = token
         validatedState.environmentId = environmentId
         return true
 
-      case 401:
+      case 401: {
         validatedState.token = undefined
         validatedState.environmentId = undefined
         validatedState.rejectedTokens.add(token)
-        setSession(null)
+
+        // A `401` is about the token that was pinged. Ending that session is a sign-out; ending
+        // anything else would sign out a newer session that arrived while this request was in flight.
+        // An empty slot has nothing to end either — and clearing it would still record a sign-out,
+        // cancelling another import that is still waiting on a token of its own.
+        // @see SessionController#adopt
+        const current = controller.snapshot().token
+        if (current === token) setSession(null)
+
         return false
+      }
 
       default:
         throw new Error(`AuthAPI.ping: Unexpected response status ${response.status}`)
@@ -289,7 +301,14 @@ export const useQuilttSession = (environmentId?: string): UseQuilttSessionReturn
     if (!sessionRef.value) return
 
     const auth = getAuth()
-    await auth.revoke(sessionRef.value.token)
+    const revoked = sessionRef.value.token
+    await auth.revoke(revoked)
+
+    // The session this revoked can be gone by the time the answer lands: a sign-in that happened
+    // while the request was in flight is not this call's to end, and clearing it would also cancel
+    // any import still waiting on its own token.
+    if (sessionRef.value?.token !== revoked) return
+
     validatedState.token = undefined
     validatedState.environmentId = undefined
     setSession(null)

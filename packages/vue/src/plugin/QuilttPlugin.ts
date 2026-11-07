@@ -18,6 +18,7 @@ import {
   JsonWebTokenParse,
   markSessionCleared,
   QuilttClient,
+  SESSION_STORAGE_KEY,
 } from '@quiltt/core'
 import { DefaultApolloClient } from '@vue/apollo-composable'
 
@@ -72,7 +73,8 @@ export const QuilttPlugin: Plugin<[QuilttPluginOptions?]> = {
     const inBrowser = isBrowser()
 
     // Initialize with provided token or stored token
-    const initialToken = options?.token ?? (inBrowser ? GlobalStorage.get('session') : undefined)
+    const initialToken =
+      options?.token ?? (inBrowser ? GlobalStorage.get(SESSION_STORAGE_KEY) : undefined)
     const initialSession = parse(initialToken)
 
     // Reactive session state
@@ -83,7 +85,21 @@ export const QuilttPlugin: Plugin<[QuilttPluginOptions?]> = {
     // A server has no shared slot to write: this request's ref is its whole session, and the store is
     // one process-wide singleton the next request would read.
     const writeStoredSession = (token: Maybe<string>) => {
-      if (inBrowser) GlobalStorage.set('session', token ?? null)
+      if (inBrowser) GlobalStorage.set(SESSION_STORAGE_KEY, token ?? null)
+    }
+
+    // A session handed in at install is this app's session, and everything outside it reads the store:
+    // the auth link authenticates with what is saved there, and another tab mirrors it. Rendering the
+    // option while leaving the store empty left the app's own requests going out with no token at
+    // all, and made an import of that same token report failure when `adopt` read the store back. An
+    // expired token is not written: the watcher below clears it instead.
+    if (
+      inBrowser &&
+      initialSession &&
+      initialSession.claims.exp * 1000 > Date.now() &&
+      GlobalStorage.get(SESSION_STORAGE_KEY) !== initialSession.token
+    ) {
+      writeStoredSession(initialSession.token)
     }
 
     // Clears are counted per slot, and on a server that is this request's ref: recording them in the
@@ -115,7 +131,7 @@ export const QuilttPlugin: Plugin<[QuilttPluginOptions?]> = {
     // place. Another tab may have signed in while this one was paused, and the event announcing it
     // can arrive after this app's expiry timer.
     const expireSession = (expiredToken: string) => {
-      if (inBrowser && (GlobalStorage.get('session') ?? null) !== expiredToken) {
+      if (inBrowser && (GlobalStorage.get(SESSION_STORAGE_KEY) ?? null) !== expiredToken) {
         mirrorClear()
         return
       }
@@ -157,7 +173,7 @@ export const QuilttPlugin: Plugin<[QuilttPluginOptions?]> = {
     // singleton, so every request would follow another request's sign-in or sign-out — and SSR never
     // unmounts the app, so nothing unsubscribes.
     if (inBrowser) {
-      GlobalStorage.subscribe('session', handleStorageChange)
+      GlobalStorage.subscribe(SESSION_STORAGE_KEY, handleStorageChange)
     }
 
     /**
@@ -166,6 +182,11 @@ export const QuilttPlugin: Plugin<[QuilttPluginOptions?]> = {
      */
     const setSession = (token: Maybe<string>): void => {
       const parsed = parse(token)
+
+      // Setting the session this app already holds changes nothing — and has to change nothing: a new
+      // object here would read as a session change and reset the Apollo cache. `adopt` writes on
+      // every path that reports success, including when the slot already held the token.
+      if (parsed && session.value?.token === parsed.token) return
 
       // Clear any existing expiration timer
       clearSessionTimeout()
@@ -216,7 +237,7 @@ export const QuilttPlugin: Plugin<[QuilttPluginOptions?]> = {
       isCleanedUp = true
 
       clearSessionTimeout()
-      GlobalStorage.unsubscribe('session', handleStorageChange)
+      GlobalStorage.unsubscribe(SESSION_STORAGE_KEY, handleStorageChange)
       if (stopSessionWatcher) {
         stopSessionWatcher()
         stopSessionWatcher = undefined
@@ -274,7 +295,7 @@ export const QuilttPlugin: Plugin<[QuilttPluginOptions?]> = {
     // tab or another Quiltt app on the page can move; on a server it is this request's ref.
     const controller = createSessionController(
       setSession,
-      'session',
+      SESSION_STORAGE_KEY,
       inBrowser
         ? undefined
         : { read: () => session.value?.token ?? null, clearCount: () => clearedCount }

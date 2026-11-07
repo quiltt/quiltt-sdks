@@ -4,7 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { GlobalStorage } from '@quiltt/core'
 
-import { QuilttClientIdKey, QuilttSessionKey, QuilttSetSessionKey } from '@/plugin/keys'
+import {
+  QuilttClientIdKey,
+  QuilttSessionControllerKey,
+  QuilttSessionKey,
+  QuilttSetSessionKey,
+} from '@/plugin/keys'
 import { QuilttPlugin } from '@/plugin/QuilttPlugin'
 
 const createToken = (expOffsetSeconds = 3600) => {
@@ -52,6 +57,36 @@ describe('QuilttPlugin', () => {
     localStorage.clear()
     vi.restoreAllMocks()
     vi.useRealTimers()
+  })
+
+  it('saves the token handed in through the option, so requests authenticate with it', () => {
+    const provide = vi.fn()
+    const app = { provide } as any
+    const token = createToken()
+
+    QuilttPlugin.install?.(app, { clientId: 'cid_test', token })
+
+    // The session is rendered from the option, but everything outside this app reads the store: the
+    // auth link authenticates with what is saved there, and another tab mirrors it. Saving only in
+    // the ref left the app's own requests going out with no token at all.
+    expect(storedSession()).toBe(token)
+  })
+
+  it('adopts its own installed token once it is confirmed', async () => {
+    const provide = vi.fn()
+    const app = { provide } as any
+    const token = createToken()
+
+    QuilttPlugin.install?.(app, { clientId: 'cid_test', token })
+
+    const controller = provide.mock.calls.find(
+      (call) => call[0] === QuilttSessionControllerKey
+    )?.[1]
+
+    // What an import does after a `200`: `adopt` reports success only when the store holds the token,
+    // so an install that filled only the ref reported failure for its own token.
+    expect(controller.adopt(token, controller.snapshot())).toBe(true)
+    expect(storedSession()).toBe(token)
   })
 
   it('initializes session from localStorage when token option is not provided', () => {
@@ -129,6 +164,29 @@ describe('QuilttPlugin', () => {
     await nextTick()
 
     expect(sessionRef.value?.token).toBe(token)
+  })
+
+  it('keeps the session object it already holds when set to the same token', () => {
+    const provide = vi.fn()
+    const app = { provide } as any
+
+    QuilttPlugin.install?.(app, { clientId: 'cid_test' })
+
+    const setSessionCall = provide.mock.calls.find((call) => call[0] === QuilttSetSessionKey)
+    const setSession = setSessionCall?.[1] as (token: string | null) => void
+    const sessionCall = provide.mock.calls.find((call) => call[0] === QuilttSessionKey)
+    const sessionRef = sessionCall?.[1] as { value: { token: string } | null | undefined }
+
+    const token = createToken()
+    setSession(token)
+    const session = sessionRef.value
+
+    // Setting the token this app already holds has to leave the session object alone: a new one
+    // reads as a change to the watcher, which resets the Apollo cache. `adopt` reports success for a
+    // token the slot already holds, so it writes this value too.
+    setSession(token)
+
+    expect(sessionRef.value).toBe(session)
   })
 
   it('does not follow the shared store without a browser', () => {

@@ -131,6 +131,8 @@ describe('useSession', () => {
     // Mock current time to be after token expiration
     vi.spyOn(Date, 'now').mockReturnValue(1700000000000)
     vi.mocked(useStorage).mockReturnValue([token, mockSetStorage, true])
+    // The hook asks the slot what it holds before clearing, so it has to hold this token.
+    GlobalStorage.set('session', token)
 
     renderHook(() => useSession())
 
@@ -212,7 +214,7 @@ describe('useSession', () => {
       expect(GlobalStorage.get(key)).toBeNull()
     })
 
-    it('reports success without writing when the slot already holds the token', () => {
+    it('reports success without a redundant write when the slot already holds the token', () => {
       const mockSetStorage = vi.fn()
       vi.mocked(useStorage).mockReturnValue([undefined, mockSetStorage, true])
       GlobalStorage.set(key, 'header.existing.signature')
@@ -450,6 +452,51 @@ describe('useSession', () => {
   })
 
   describe('timer management', () => {
+    it('does not clear a newer session when the previous one expires', async () => {
+      const mockSetStorage = vi.fn()
+      const currentTime = 1700000000
+      const previous = createTestToken({ exp: currentTime + 3600, iat: currentTime })
+      const newer = createTestToken({ exp: currentTime + 7200, iat: currentTime })
+
+      vi.spyOn(Date, 'now').mockImplementation(() => currentTime * 1000)
+      vi.mocked(useStorage).mockReturnValue([previous, mockSetStorage, true])
+      GlobalStorage.set('session', previous)
+
+      renderHook(() => useSession())
+
+      // A newer session is adopted, but the re-render that would re-arm this timer has not happened.
+      GlobalStorage.set('session', newer)
+
+      act(() => {
+        vi.advanceTimersByTime(3600 * 1000)
+      })
+
+      // The expired session is not the one in place, so nothing is cleared.
+      expect(mockSetStorage).not.toHaveBeenCalled()
+      expect(GlobalStorage.get('session')).toBe(newer)
+    })
+
+    it('counts a clear that arrives from outside the hook as a sign-out', () => {
+      const key = 'observed-clear-session'
+      vi.mocked(useStorage).mockReturnValue([undefined, vi.fn(), true])
+      GlobalStorage.set(key, 'header.observed.signature')
+
+      const { result } = renderHook(() => useSession(key))
+      const before = result.current[2].snapshot()
+
+      // Another tab, or another Quiltt app on the page, signs out. This hook only observes it, so
+      // nothing else would record the clear.
+      act(() => {
+        GlobalStorage.set(key, null)
+      })
+
+      const after = result.current[2].snapshot()
+      expect(after.revision).toBe(before.revision + 1)
+      // Work that snapshotted the old session cannot tell the difference from nothing happening, so
+      // it would otherwise write its token back and resurrect the session just ended.
+      expect(result.current[2].adopt(createTestToken({ exp: 4102444800 }), before)).toBe(false)
+    })
+
     it('schedules expiration timer for future token', async () => {
       const mockSetStorage = vi.fn()
       const currentTime = 1700000000
@@ -462,6 +509,7 @@ describe('useSession', () => {
 
       vi.spyOn(Date, 'now').mockImplementation(() => currentTime * 1000)
       vi.mocked(useStorage).mockReturnValue([token, mockSetStorage, true])
+      GlobalStorage.set('session', token)
 
       renderHook(() => useSession())
 
@@ -511,11 +559,13 @@ describe('useSession', () => {
 
       vi.spyOn(Date, 'now').mockImplementation(() => currentTime * 1000)
       vi.mocked(useStorage).mockReturnValue([token1, mockSetStorage, true])
+      GlobalStorage.set('session', token1)
 
       const { rerender } = renderHook(() => useSession())
 
       // Update to new token with different expiration
       vi.mocked(useStorage).mockReturnValue([token2, mockSetStorage, true])
+      GlobalStorage.set('session', token2)
       rerender()
 
       // The first token's expiry passes without clearing: its timer was replaced.
@@ -614,6 +664,7 @@ describe('useSession', () => {
 
       vi.spyOn(Date, 'now').mockImplementation(() => currentTime * 1000)
       vi.mocked(useStorage).mockReturnValue([token, mockSetStorage, true])
+      GlobalStorage.set('session', token)
 
       renderHook(() => useSession())
 

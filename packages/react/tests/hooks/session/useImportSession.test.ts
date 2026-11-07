@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
 
 import type { AuthAPI, Maybe, QuilttJWT } from '@quiltt/core'
-import { GlobalStorage, JsonWebTokenParse, SESSION_STORAGE_KEY } from '@quiltt/core'
+import {
+  GlobalStorage,
+  JsonWebTokenParse,
+  markSessionCleared,
+  SESSION_STORAGE_KEY,
+} from '@quiltt/core'
 
 import { useImportSession } from '@/hooks/session/useImportSession'
 import type { SetSession } from '@/hooks/useSession'
@@ -54,16 +59,21 @@ describe('useImportSession', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockAuth = createMockAuthAPI()
-    // Writes the slot the controller reads back, the way the real setter does.
-    const store = (next: unknown) =>
-      GlobalStorage.set(
-        SESSION_STORAGE_KEY,
+    // Writes the slot the controller reads back, and records a clear, the way the real setter does.
+    const store = (next: unknown) => {
+      const value =
         typeof next === 'function'
           ? (next as (previous: unknown) => string | null)(GlobalStorage.get(SESSION_STORAGE_KEY))
           : (next as string | null)
-      )
 
-    mockSetSession = vi.fn(store) as unknown as SetSession
+      if (!value) markSessionCleared(SESSION_STORAGE_KEY)
+      GlobalStorage.set(SESSION_STORAGE_KEY, value)
+    }
+
+    // Tagged the way `useSession`'s setter is, so the import can read back the slot it writes.
+    mockSetSession = Object.assign(vi.fn(store), {
+      storageKey: SESSION_STORAGE_KEY,
+    }) as unknown as SetSession
   })
 
   describe('with no token provided', () => {
@@ -326,11 +336,37 @@ describe('useImportSession', () => {
     })
   })
 
+  describe('with a setter that writes its own state', () => {
+    it('reports the token as imported', async () => {
+      const testJWT = createTestJWT({ token: 'own.state.jwt.token' })
+      vi.mocked(JsonWebTokenParse).mockReturnValue(testJWT)
+      mockAuth.ping.mockResolvedValue({ status: 200, data: { token: testJWT.token } })
+
+      // The four-argument form with a caller's own setter — a `useState`, say. It writes state this
+      // hook cannot read, so the shared slot stays empty and reading it back would report the caller's
+      // successful sign-in as a failure.
+      let state: string | null = null
+      const setOwnSession = ((next: string | null) => {
+        state = next
+      }) as unknown as SetSession
+
+      const { result } = renderHook(() =>
+        useImportSession(mockAuth as unknown as AuthAPI, undefined, setOwnSession)
+      )
+
+      const imported = await act(async () => result.current(testJWT.token))
+
+      expect(imported).toBe(true)
+      expect(state).toBe(testJWT.token)
+    })
+  })
+
   describe('with inactive token (401)', () => {
     // Rejected tokens are latched at module scope, so 401 tests use distinct
     // tokens to stay independent of each other and of later tests.
-    it('returns false and clears local session state', async () => {
+    it('returns false without clearing an empty session', async () => {
       const testJWT = createTestJWT({ token: 'inactive.jwt.token' })
+      GlobalStorage.set(SESSION_STORAGE_KEY, null)
 
       vi.mocked(JsonWebTokenParse).mockReturnValue(testJWT)
       mockAuth.ping.mockResolvedValue({ status: 401, data: {} })
@@ -345,7 +381,140 @@ describe('useImportSession', () => {
 
       expect(imported).toBe(false)
       expect(mockAuth.ping).toHaveBeenCalledWith(testJWT.token)
+      // The rejected token was never stored, so there is no session to end. Clearing the empty slot
+      // would still record a sign-out, which cancels an import that is waiting on another token.
+      expect(mockSetSession).not.toHaveBeenCalled()
+      expect(GlobalStorage.get(SESSION_STORAGE_KEY)).toBeNull()
+    })
+
+    it('clears the session the rejected token was', async () => {
+      const testJWT = createTestJWT({ token: 'stored.inactive.jwt.token' })
+
+      vi.mocked(JsonWebTokenParse).mockReturnValue(testJWT)
+      mockAuth.ping.mockResolvedValue({ status: 401, data: {} })
+      GlobalStorage.set(SESSION_STORAGE_KEY, testJWT.token)
+
+      const { result } = renderHook(() =>
+        useImportSession(mockAuth as unknown as AuthAPI, undefined, mockSetSession)
+      )
+
+      const imported = await act(async () => {
+        return await result.current(testJWT.token)
+      })
+
+      expect(imported).toBe(false)
       expect(mockSetSession).toHaveBeenCalledWith(null)
+      expect(GlobalStorage.get(SESSION_STORAGE_KEY)).toBeNull()
+    })
+
+    it('does not cancel an import of another token that is still validating', async () => {
+      const saved = createTestJWT({ token: 'saved.dead.jwt.token' })
+      const fresh = createTestJWT({ token: 'fresh.live.jwt.token' })
+
+      vi.mocked(JsonWebTokenParse).mockImplementation((value) =>
+        value === saved.token ? saved : fresh
+      )
+
+      // The saved token is checked first; a fresh one arrives before that check finishes.
+      let answerSaved: (value: { status: number }) => void = () => {}
+      let answerFresh: (value: { status: number; data: { token: string } }) => void = () => {}
+      mockAuth.ping.mockImplementation(
+        (pinged: string) =>
+          new Promise((resolve) => {
+            if (pinged === saved.token) answerSaved = resolve
+            else answerFresh = resolve
+          })
+      )
+
+      const { result } = renderHook(() =>
+        useImportSession(mockAuth as unknown as AuthAPI, undefined, mockSetSession)
+      )
+
+      const savedImport = result.current(saved.token)
+      const freshImport = result.current(fresh.token)
+
+      // The saved token comes back rejected while the fresh import is still waiting for its answer.
+      await act(async () => {
+        answerSaved({ status: 401 })
+        expect(await savedImport).toBe(false)
+      })
+
+      const freshImported = await act(async () => {
+        answerFresh({ status: 200, data: { token: fresh.token } })
+        return freshImport
+      })
+
+      // Rejecting a token that was never stored says nothing about the token being signed in with.
+      expect(freshImported).toBe(true)
+      expect(GlobalStorage.get(SESSION_STORAGE_KEY)).toBe(fresh.token)
+    })
+
+    it('does not adopt a token another import of it had rejected', async () => {
+      const testJWT = createTestJWT({ token: 'rejected.while.in.flight.jwt.token' })
+      // Nothing stored, so the rejection has no clear to record and the only thing that can stop the
+      // second answer from being adopted is the token's own rejection.
+      GlobalStorage.set(SESSION_STORAGE_KEY, null)
+
+      vi.mocked(JsonWebTokenParse).mockReturnValue(testJWT)
+      let reject: (value: { status: number }) => void = () => {}
+      let answer: (value: { status: number; data?: { token: string } }) => void = () => {}
+
+      mockAuth.ping.mockImplementation(() =>
+        // The first request is rejected, the second one — started before the answer arrived —
+        // succeeds. The server has already said the token is dead.
+        mockAuth.ping.mock.calls.length === 1
+          ? new Promise((resolve) => {
+              reject = resolve
+            })
+          : new Promise((resolve) => {
+              answer = resolve
+            })
+      )
+
+      const { result } = renderHook(() =>
+        useImportSession(mockAuth as unknown as AuthAPI, undefined, mockSetSession)
+      )
+
+      const first = result.current(testJWT.token)
+      const second = result.current(testJWT.token)
+
+      await act(async () => {
+        reject({ status: 401 })
+        expect(await first).toBe(false)
+      })
+
+      // The rejection ended no session here: there was none to end.
+      expect(mockSetSession).not.toHaveBeenCalled()
+
+      const secondImported = await act(async () => {
+        answer({ status: 200, data: { token: testJWT.token } })
+        return second
+      })
+
+      expect(secondImported).toBe(false)
+      expect(GlobalStorage.get(SESSION_STORAGE_KEY)).toBeNull()
+    })
+
+    it('does not clear a session that signed in during the ping', async () => {
+      const testJWT = createTestJWT({ token: 'superseded.jwt.token' })
+
+      vi.mocked(JsonWebTokenParse).mockReturnValue(testJWT)
+      mockAuth.ping.mockImplementation(async () => {
+        // Another tab, or the app itself, signs in while this request is in flight
+        GlobalStorage.set(SESSION_STORAGE_KEY, 'header.newer-user.signature')
+        return { status: 401, data: {} }
+      })
+
+      const { result } = renderHook(() =>
+        useImportSession(mockAuth as unknown as AuthAPI, undefined, mockSetSession)
+      )
+
+      const imported = await act(async () => result.current(testJWT.token))
+
+      // The rejection is about the token that was pinged, which is no longer the one in place.
+      expect(imported).toBe(false)
+      expect(mockSetSession).not.toHaveBeenCalled()
+      expect(GlobalStorage.get(SESSION_STORAGE_KEY)).toBe('header.newer-user.signature')
     })
 
     it('does not re-ping a token the server rejected with 401', async () => {

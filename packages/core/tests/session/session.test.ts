@@ -23,13 +23,15 @@ describe('createSessionController', () => {
     expect(set).toHaveBeenCalledWith('header.next.signature')
   })
 
-  it('reports success without writing when the slot already holds the token', () => {
+  it('reports success for a token the slot already holds, and notifies the setter', () => {
     GlobalStorage.set(key, 'header.current.signature')
     const set = vi.fn()
     const controller = createSessionController(set, key)
 
+    // A concurrent import may already have stored the token, and the session the caller asked for is
+    // active either way. The setter still runs so a wrapper around it is notified.
     expect(controller.adopt('header.current.signature', controller.snapshot())).toBe(true)
-    expect(set).not.toHaveBeenCalled()
+    expect(set).toHaveBeenCalledWith('header.current.signature')
   })
 
   it('reports failure when the setter does not store the token', () => {

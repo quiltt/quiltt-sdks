@@ -56,15 +56,18 @@ export const QuilttAuthProvider: FC<QuilttAuthProviderProps> = ({
   children,
 }) => {
   const { session, importSession, restored } = useQuilttSession()
-  const previousSessionRef = useRef(session)
   const previousTokenRef = useRef<string | undefined>(undefined)
   const previousHeadersRef = useRef<Record<string, string> | undefined>(undefined)
   const importSessionRef = useRef(importSession)
 
-  // Whether `previousSessionRef` holds a session that has been read, rather than the default a
-  // render before the restore had to use. The first session a mount reads is what the cache will
-  // belong to, so it is the baseline, not a change.
-  const hasBaselineRef = useRef(false)
+  // The session the last run of the cache effect saw, and whether that session had been read. The
+  // first session a mount reads is what the cache will belong to, so it is the baseline rather than a
+  // change — but a render that has to match the server's cannot read storage, so its default is not a
+  // baseline for anything. Keeping the two together means they cannot disagree.
+  const previousSessionRef = useRef<{ session: typeof session; known: boolean }>({
+    session,
+    known: false,
+  })
 
   // The session storage held before any effect could change it. A client handed in through
   // `graphqlClient` arrives with a cache that belongs to whatever session was in place then, and that
@@ -74,6 +77,10 @@ export const QuilttAuthProvider: FC<QuilttAuthProviderProps> = ({
   if (mountTokenRef.current === undefined) {
     mountTokenRef.current = GlobalStorage.get(SESSION_STORAGE_KEY) ?? null
   }
+
+  // The client this provider started with. Only that one can hold a cache from before this provider
+  // existed: a client attached later was built by the app around the session it had at that point.
+  const mountClientRef = useRef<typeof apolloClient | undefined>(undefined)
 
   // Keep importSession ref up to date
   useEffect(() => {
@@ -130,8 +137,16 @@ export const QuilttAuthProvider: FC<QuilttAuthProviderProps> = ({
     // inherited cache has no owner: a session that ends during the first commit — a saved token
     // cleared while the session is still unread — would be recorded as belonging to nobody, and the
     // data it holds would stay available after the session ended.
+    if (mountClientRef.current === undefined) mountClientRef.current = apolloClient
+
     if (!cacheSessionOwners.has(apolloClient)) {
-      cacheSessionOwners.set(apolloClient, mountTokenRef.current ?? null)
+      if (mountClientRef.current === apolloClient) {
+        cacheSessionOwners.set(apolloClient, mountTokenRef.current ?? null)
+      } else if (restored) {
+        // Attached after the mount: `mountTokenRef` describes a client that is no longer in use, so
+        // charging this cache to it would reset a cache the app built for the current session.
+        cacheSessionOwners.set(apolloClient, session?.token ?? null)
+      }
     }
 
     // Nothing can be decided about a session that has not been read yet. A render that has to match
@@ -149,7 +164,8 @@ export const QuilttAuthProvider: FC<QuilttAuthProviderProps> = ({
     const inheritedFromAnotherSession =
       cacheSessionOwner !== undefined && cacheSessionOwner !== token
 
-    const changed = hasBaselineRef.current && !isDeepEqual(session, previousSessionRef.current)
+    const previous = previousSessionRef.current
+    const changed = previous.known && !isDeepEqual(session, previous.session)
 
     if (inheritedFromAnotherSession || changed) {
       apolloClient.resetStore().catch(() => {
@@ -160,8 +176,7 @@ export const QuilttAuthProvider: FC<QuilttAuthProviderProps> = ({
 
     // Recorded once the session is known, so the next mount can tell whose data this cache holds.
     cacheSessionOwners.set(apolloClient, token)
-    previousSessionRef.current = session
-    hasBaselineRef.current = true
+    previousSessionRef.current = { session, known: true }
   }, [session, restored, apolloClient])
 
   return <ApolloProvider client={apolloClient}>{children}</ApolloProvider>

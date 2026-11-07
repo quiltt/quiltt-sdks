@@ -163,6 +163,38 @@ describe('QuilttAuthProvider store reset', () => {
     expect(client.cache.extract()).toEqual({})
   })
 
+  // A client attached after the provider mounted was built by the app around the session it has at
+  // that point, so its cache belongs to that session — not to whatever storage held when the provider
+  // started, which was nothing.
+  it('keeps the cache of a client attached after the session was established', async () => {
+    const { rerender } = render(<QuilttAuthProvider>{null}</QuilttAuthProvider>)
+    await act(async () => {})
+
+    const token = createToken()
+    await act(async () => {
+      GlobalStorage.set(SESSION_STORAGE_KEY, token)
+    })
+
+    const client = createClient()
+    const resetStore = vi.spyOn(client, 'resetStore')
+    client.cache.writeQuery({
+      query: gql`
+        query Me {
+          me {
+            id
+          }
+        }
+      `,
+      data: { me: { __typename: 'Me', id: 'prefilled-for-the-current-session' } },
+    })
+
+    rerender(<QuilttAuthProvider graphqlClient={client}>{null}</QuilttAuthProvider>)
+    await act(async () => {})
+
+    expect(resetStore).not.toHaveBeenCalled()
+    expect(client.cache.extract()).not.toEqual({})
+  })
+
   // The assertions above observe `resetStore` itself; this one observes the data it would throw
   // away, so it fails if the reset stops reaching the cache.
   it('drops the cached data of a session a reused client is no longer mounted under', async () => {

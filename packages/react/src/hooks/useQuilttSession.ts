@@ -45,7 +45,7 @@ export const useQuilttSession: UseQuilttSession = (environmentId) => {
   const importSession = useImportSession(auth, session, setSession, environmentId, controller)
   const identifySession = useIdentifySession(auth, setSession)
   const authenticateSession = useAuthenticateSession(auth, setSession)
-  const revokeSession = useRevokeSession(auth, session, setSession)
+  const revokeSession = useRevokeSession(auth, session, setSession, controller)
 
   /**
    * Forget current session.
