@@ -4,23 +4,10 @@
 
 ### Minor Changes
 
-- [#590](https://github.com/quiltt/quiltt-sdks/pull/590) [`4d54ff7`](https://github.com/quiltt/quiltt-sdks/commit/4d54ff78df69cb7eb6e83edd7500ab1669d085b3) Thanks [@sirwolfgang](https://github.com/sirwolfgang)! - Signing out now sticks. `importSession` validated a token with a request and wrote it afterwards, so a sign-out — or a different sign-in — that landed while that request was in flight was overwritten by the late response, and an app that redirects on "signed in" sent the user back where they came from. The token is now adopted only if the session has not moved on in the meantime, and `importSession` resolves `false` when it did not; two overlapping imports of the same token both resolve `true`.
+- [#590](https://github.com/quiltt/quiltt-sdks/pull/590) [`4d54ff7`](https://github.com/quiltt/quiltt-sdks/commit/4d54ff78df69cb7eb6e83edd7500ab1669d085b3) Thanks [@sirwolfgang](https://github.com/sirwolfgang)! - Signing out now sticks, and a late answer — a sign-out, a rejected token, an expiry — can no longer end a session that replaced it. The fixes live in `@quiltt/react` and `@quiltt/core` and reach React Native through its re-exports, so upgrading this package is enough to get them.
 
-  - **Fixed** — a subscription authenticates with the session its request used, rather than the shared session store. A request whose session came from elsewhere failed with `UNAUTHENTICATED` / `NO_TOKEN`, and a store holding a different session connected the WebSocket as that user.
-  - **Fixed** — a `401` signs out the session that sent the request, rather than only the shared store, so a server render no longer resends a rejected token on every later query. A rejection that arrives after the session was replaced no longer signs out the newer session — whether it came from a query or from the import validating a token — and no longer cancels a sign-in that is still being validated.
-  - **Fixed** — `revokeSession`, and the timer that ends an expiring session, no longer sign out a session that was adopted while they were waiting. A revoke answered after a new sign-in, or the previous session's timer firing after a new one was stored, cleared the new session.
-  - **Fixed** — a `@quiltt/react` app sees a sign-out made in another tab while it is validating a token, instead of adopting that token when the answer arrives and bringing the ended session back.
-  - **Fixed** — a `@quiltt/vue` tab no longer signs out a session another tab has since saved. An expiry it observes — a stale token arriving late, or one that lapses while a newer sign-in is already stored — ends that tab's own session without writing over the stored one.
-  - **Fixed** — a server-rendered `@quiltt/vue` app keeps each request's session to itself. One request could render another request's session or be signed out by it, and its GraphQL calls could go out without a session of their own or be batched with another request's under one `authorization` header.
-  - **Fixed** — `QuilttAuthProvider` no longer resets the Apollo cache for the session a mount starts with, so an app reusing one client across route changes no longer loses cached data and refetches it. It still resets when the session really changes — including one that changed while the provider was unmounted, or had already expired by the time it mounted — so one account's cached results are never shown to another.
-  - **Fixed** — a `@quiltt/vue` app installed with a `token` option now saves it. The option filled only the app's own session, so its GraphQL requests went out with no token at all and importing that same token reported failure.
-  - **Fixed** — `useStorage` no longer re-renders in a loop, ending in React's "Maximum update depth exceeded", when it persists an object under an inline default such as `useStorage('settings', {})`.
-  - **Fixed** — `useStorage` no longer reads or writes the shared store on a server, where one request's value was visible to the next.
-  - **Changed** — `useStorage`'s initial value behaves like `useState`'s default. It now applies in browsers, where a missing key previously read back as `null` and the default was ignored; it applies only to a key that was never written, so a cleared value stays cleared — including after a reload — and a hook pointed at a new key no longer inherits the previous key's value; and setting a value equal to it saves it, where the write used to be dropped as a no-op. A cleared key is saved as `null`, which is how a later visit tells it apart from one that was never written, so `LocalStorage#get` reports `null` for it.
-  - **Changed** — `useStorage` updater functions receive the current stored value instead of the one captured when the setter was created.
-  - **Added** — `useStorage` reports whether its value has been read from storage yet, as `restored`: the third element of its tuple, `useSession`'s fourth, and a named property on `useQuilttSession`. It is `false` only for the render that has to match the server's markup, which cannot read storage, so an empty value there does not mean signed out. Redirects and login screens should wait for it.
-  - **Added** — `useSession` returns a `SessionController` with `snapshot()` and `adopt(token, at)`, for work that resumes after an `await` and has to know whether the session moved on while it waited. `adopt` reports success only when the session now holds the token.
-  - **Added** — `Storage#has(key)` reports whether a key was ever written, which `get` cannot answer: a key written empty and one never written both read back empty. `@quiltt/core`'s session helpers and types — `createSessionController`, `SESSION_STORAGE_KEY`, `sharedSessionTokenSource`, `SessionController`, `SessionTokenSource` and the rest — are exported from `@quiltt/react`, `@quiltt/vue`, and `@quiltt/react-native` as well, and `@quiltt/core` now exposes them at `@quiltt/core/session`.
+  - **Added** — the session helpers and types (`createSessionController`, `SESSION_STORAGE_KEY`, `sharedSessionTokenSource`, `SessionController`, `SessionTokenSource`) are exported from `@quiltt/react-native` as well, so an app can import them without depending on `@quiltt/core` directly.
+  - **Fixed** — `QuilttAuthProvider` no longer documents a loading state it does not have: a `token` passed in is adopted in an effect, so children render immediately and the session arrives a render later.
 
 ### Patch Changes
 
@@ -155,15 +142,6 @@
 
 ### Patch Changes
 
-- [#469](https://github.com/quiltt/quiltt-sdks/pull/469) [`292fc83`](https://github.com/quiltt/quiltt-sdks/commit/292fc8313e2c1dcb58156d5d44ca135857b1f40c) Thanks [@zubairaziz](https://github.com/zubairaziz)! - ## Vue: Add feature parity with React package
-
-  - **New `QuilttContainer` component** — renders the connector inline, matching the React package API. Deprecates `QuilttConnector` in favor of this component.
-  - **New `useQuilttConnector` composable** — provides SDK loading, connector lifecycle management, and session-based authentication outside of components.
-  - **`QuilttButton` enhancements** — added `@click` event passthrough with `event.preventDefault()` support, `forceRemountOnConnectionChange` prop, and `quiltt-connection` / `quiltt-app-launcher-uri` attributes.
-  - **Additional connector events** — added `@open`, `@exit`, and `@event` emits to `QuilttButton` and `QuilttContainer`.
-  - **Force remount mechanism** — new `forceRemountOnConnectionChange` prop on `QuilttButton`, `QuilttContainer`, and `QuilttConnector` forces a complete remount when `connectionId` changes, useful for ensuring clean connector state.
-  - **Deprecation check workflow** — CI check that validates deprecated component usage (`.github/actions/check-deprecations`).
-
 - Updated dependencies [[`0669bd0`](https://github.com/quiltt/quiltt-sdks/commit/0669bd08048010791008f62b5368ee3a5beeb7d0), [`292fc83`](https://github.com/quiltt/quiltt-sdks/commit/292fc8313e2c1dcb58156d5d44ca135857b1f40c)]:
   - @quiltt/react@5.3.0
   - @quiltt/core@5.3.0
@@ -171,8 +149,6 @@
 ## 5.2.5
 
 ### Patch Changes
-
-- [#460](https://github.com/quiltt/quiltt-sdks/pull/460) [`30d2745`](https://github.com/quiltt/quiltt-sdks/commit/30d2745186a38356ec6ecdce32dc70577c4262a3) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Fix OAuth URL double-encoding validation bug in Android and iOS SDKs. URLs arriving double-encoded from OAuth providers now normalize correctly before HTTPS validation, allowing OAuth flows to launch successfully in the browser.
 
 - Updated dependencies [[`30d2745`](https://github.com/quiltt/quiltt-sdks/commit/30d2745186a38356ec6ecdce32dc70577c4262a3)]:
   - @quiltt/core@5.2.5
@@ -182,8 +158,6 @@
 
 ### Patch Changes
 
-- [#451](https://github.com/quiltt/quiltt-sdks/pull/451) [`e8179ce`](https://github.com/quiltt/quiltt-sdks/commit/e8179ce5dd340b0804da1836c97aec62604d91f2) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Fix SDK Release
-
 - Updated dependencies [[`e8179ce`](https://github.com/quiltt/quiltt-sdks/commit/e8179ce5dd340b0804da1836c97aec62604d91f2)]:
   - @quiltt/core@5.2.4
   - @quiltt/react@5.2.4
@@ -191,8 +165,6 @@
 ## 5.2.3
 
 ### Patch Changes
-
-- [#448](https://github.com/quiltt/quiltt-sdks/pull/448) [`f5968c6`](https://github.com/quiltt/quiltt-sdks/commit/f5968c65bd5de1bf421d96bc371473f1e9ba4763) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Empty-token early return and no-session revoke guard in useQuilttSession
 
 - Updated dependencies [[`f5968c6`](https://github.com/quiltt/quiltt-sdks/commit/f5968c65bd5de1bf421d96bc371473f1e9ba4763)]:
   - @quiltt/react@5.2.3
@@ -234,23 +206,7 @@
 
 ### Patch Changes
 
-- [#425](https://github.com/quiltt/quiltt-sdks/pull/425) [`c684b3b`](https://github.com/quiltt/quiltt-sdks/commit/c684b3b5f6ea2829e2abfa2a75c0d430edad66a5) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Add @quiltt/capacitor package for Ionic and Capacitor apps
-
-  - Framework-agnostic by default — works with Vue, Angular, Svelte, or vanilla JS
-  - Vue 3 components via `@quiltt/capacitor/vue` subpath
-  - React components via `@quiltt/capacitor/react` subpath
-  - Native iOS (Swift) and Android (Kotlin) plugins for OAuth deep linking
-  - Supports Capacitor 6, 7, and 8
-
-  Add @quiltt/vue package for Vue 3 applications
-
-  - `QuilttPlugin` for session management via Vue's provide/inject
-  - `useQuilttSession` composable for authentication
-  - `useQuilttConnector` composable for programmatic control
-  - `QuilttButton`, `QuilttConnector`, `QuilttContainer` components
-  - Add `@quiltt/capacitor/vue` entry point for Capacitor apps
-
-  Rename `oauthRedirectUrl` to `appLauncherUrl` for mobile OAuth flows
+- [#425](https://github.com/quiltt/quiltt-sdks/pull/425) [`c684b3b`](https://github.com/quiltt/quiltt-sdks/commit/c684b3b5f6ea2829e2abfa2a75c0d430edad66a5) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Rename `oauthRedirectUrl` to `appLauncherUrl` for mobile OAuth flows
 
   This change introduces `appLauncherUrl` as the new preferred property name for specifying the Universal Link (iOS) or App Link (Android) that redirects users back to your app after OAuth authentication.
 
@@ -279,8 +235,6 @@
 
 ### Patch Changes
 
-- [#423](https://github.com/quiltt/quiltt-sdks/pull/423) [`aca4d51`](https://github.com/quiltt/quiltt-sdks/commit/aca4d51bc699f80e50977d28b120280db9a4414d) Thanks [@sirwolfgang](https://github.com/sirwolfgang)! - Fix VersionLink to allow custom Quiltt-SDK-Agent header override
-
 - Updated dependencies [[`aca4d51`](https://github.com/quiltt/quiltt-sdks/commit/aca4d51bc699f80e50977d28b120280db9a4414d)]:
   - @quiltt/core@5.1.2
   - @quiltt/react@5.1.2
@@ -291,17 +245,11 @@
 
 - [#419](https://github.com/quiltt/quiltt-sdks/pull/419) [`5f5846a`](https://github.com/quiltt/quiltt-sdks/commit/5f5846a1d807f517c156bbebe60d639256a7db1e) Thanks [@rubendinho](https://github.com/rubendinho)! - Update telemetry headers
 
-- [#421](https://github.com/quiltt/quiltt-sdks/pull/421) [`0756cb5`](https://github.com/quiltt/quiltt-sdks/commit/0756cb59d3fb55208cc2d1bdc10a2a8d5b66b595) Thanks [@sirwolfgang](https://github.com/sirwolfgang)! - Ensure custom Headers are passed to all API calls
-
 - Updated dependencies [[`5f5846a`](https://github.com/quiltt/quiltt-sdks/commit/5f5846a1d807f517c156bbebe60d639256a7db1e), [`0756cb5`](https://github.com/quiltt/quiltt-sdks/commit/0756cb59d3fb55208cc2d1bdc10a2a8d5b66b595)]:
   - @quiltt/react@5.1.1
   - @quiltt/core@5.1.1
 
 ## 5.1.0
-
-### Minor Changes
-
-- [#406](https://github.com/quiltt/quiltt-sdks/pull/406) [`177a4fc`](https://github.com/quiltt/quiltt-sdks/commit/177a4fc3d70fa3f313f6586396719dae9763cf4b) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Add OAuth redirect URL support to React SDK
 
 ### Patch Changes
 
@@ -313,8 +261,6 @@
 
 ### Patch Changes
 
-- [#412](https://github.com/quiltt/quiltt-sdks/pull/412) [`099070b`](https://github.com/quiltt/quiltt-sdks/commit/099070b984f7375491e1c736bc3fbd35c93c7fd3) Thanks [@rubendinho](https://github.com/rubendinho)! - Improve User Agent telemetry
-
 - [#410](https://github.com/quiltt/quiltt-sdks/pull/410) [`628887c`](https://github.com/quiltt/quiltt-sdks/commit/628887cc592b492a1fb38ff5898aeda969140855) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Re-Export Upstream Packages
 
 - Updated dependencies [[`099070b`](https://github.com/quiltt/quiltt-sdks/commit/099070b984f7375491e1c736bc3fbd35c93c7fd3), [`628887c`](https://github.com/quiltt/quiltt-sdks/commit/628887cc592b492a1fb38ff5898aeda969140855)]:
@@ -325,8 +271,6 @@
 
 ### Patch Changes
 
-- [#407](https://github.com/quiltt/quiltt-sdks/pull/407) [`0262754`](https://github.com/quiltt/quiltt-sdks/commit/0262754fa680d39cea1426a09796783488a4f4d6) Thanks [@rubendinho](https://github.com/rubendinho)! - Add Institution Prop to QuilttContainer
-
 - Updated dependencies [[`0262754`](https://github.com/quiltt/quiltt-sdks/commit/0262754fa680d39cea1426a09796783488a4f4d6)]:
   - @quiltt/react@5.0.2
   - @quiltt/core@5.0.2
@@ -335,13 +279,9 @@
 
 ### Patch Changes
 
-- [#403](https://github.com/quiltt/quiltt-sdks/pull/403) [`b714ff3`](https://github.com/quiltt/quiltt-sdks/commit/b714ff3b3ee878445ca8e09903153ac0b43d693b) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Prevent Infinite Re-Renders in QuilttProvider
-
 - [#399](https://github.com/quiltt/quiltt-sdks/pull/399) [`77d11b6`](https://github.com/quiltt/quiltt-sdks/commit/77d11b69ceb950da9ca500aa73bae7a3abdfb3a2) Thanks [@CarltonHowell](https://github.com/CarltonHowell)! - Output commonJS
 
 - [#402](https://github.com/quiltt/quiltt-sdks/pull/402) [`97eccbe`](https://github.com/quiltt/quiltt-sdks/commit/97eccbe6df42843307a11d28a0a8b5a36e43f3d9) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Remove Node.js Dependencies in React Native Builds
-
-- [#401](https://github.com/quiltt/quiltt-sdks/pull/401) [`2bf07c3`](https://github.com/quiltt/quiltt-sdks/commit/2bf07c36bf8dc573f01db8f4c69a48e05d313b8b) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Improve expired auth token detection and clearing
 
 - [#404](https://github.com/quiltt/quiltt-sdks/pull/404) [`45eb8c9`](https://github.com/quiltt/quiltt-sdks/commit/45eb8c907f51c0c8c5a3c069c35e0f301a4c374f) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Add Subpath Exports and Reorganize Core Modules
 
@@ -383,47 +323,11 @@
 
 ### Patch Changes
 
-- [#380](https://github.com/quiltt/quiltt-sdks/pull/380) [`31cd190`](https://github.com/quiltt/quiltt-sdks/commit/31cd1902618ebc2314d42dd7aca81b3ab94068ea) Thanks [@sirwolfgang](https://github.com/sirwolfgang)! - Improve useQuilttResolvable error messaging
-
 - Updated dependencies [[`31cd190`](https://github.com/quiltt/quiltt-sdks/commit/31cd1902618ebc2314d42dd7aca81b3ab94068ea), [`0bf706c`](https://github.com/quiltt/quiltt-sdks/commit/0bf706ce2ad926304d6eac739ee58971736f913e)]:
   - @quiltt/core@4.5.0
   - @quiltt/react@4.5.0
 
 ## 4.4.0
-
-### Minor Changes
-
-- [#378](https://github.com/quiltt/quiltt-sdks/pull/378) [`0af4e66`](https://github.com/quiltt/quiltt-sdks/commit/0af4e6622d1542e0c0c02ac7e897e3e4f9219cbd) Thanks [@sirwolfgang](https://github.com/sirwolfgang)! - Add connector institution search and provider migration support.
-
-  ## New APIs
-
-  ### `useQuilttResolvable` Hook
-
-  Check if external provider institution IDs (e.g., Plaid) can be migrated to your connector.
-
-  ```typescript
-  import { useQuilttResolvable } from "@quiltt/react";
-  import { useEffect } from "react";
-
-  function ResolvableConnector({ plaidInstitutionId, children }) {
-    const { checkResolvable, isResolvable, isLoading } =
-      useQuilttResolvable("my-connector-id");
-
-    useEffect(() => {
-      checkResolvable({ plaid: plaidInstitutionId });
-    }, [plaidInstitutionId]);
-
-    if (isLoading) return <div>Checking...</div>;
-    if (!isResolvable) return null;
-
-    return <>{children}</>;
-  }
-
-  // Usage
-  <ResolvableConnector plaidInstitutionId="ins_3">
-    <QuilttButton connectorId="my-connector-id" />
-  </ResolvableConnector>;
-  ```
 
 ### Patch Changes
 
@@ -435,8 +339,6 @@
 
 ### Patch Changes
 
-- [#375](https://github.com/quiltt/quiltt-sdks/pull/375) [`fdc91e3`](https://github.com/quiltt/quiltt-sdks/commit/fdc91e3efb3f63659580f2d1d2ea0ff7fcaee8f5) Thanks [@sirwolfgang](https://github.com/sirwolfgang)! - Add 403 callback to Auth useIdentifySession
-
 - Updated dependencies [[`fdc91e3`](https://github.com/quiltt/quiltt-sdks/commit/fdc91e3efb3f63659580f2d1d2ea0ff7fcaee8f5)]:
   - @quiltt/react@4.3.3
   - @quiltt/core@4.3.3
@@ -445,8 +347,6 @@
 
 ### Patch Changes
 
-- [#372](https://github.com/quiltt/quiltt-sdks/pull/372) [`c022ebe`](https://github.com/quiltt/quiltt-sdks/commit/c022ebed0c82404a1bdbf5abbaf6e60b49f2d07a) Thanks [@sirwolfgang](https://github.com/sirwolfgang)! - Hardened React SDK against unstable prop references by implementing ref-based callback wrappers and deep equality checks, eliminating unnecessary re-renders, event handler churn, and API calls without requiring customers to use useCallback.
-
 - Updated dependencies [[`c022ebe`](https://github.com/quiltt/quiltt-sdks/commit/c022ebed0c82404a1bdbf5abbaf6e60b49f2d07a)]:
   - @quiltt/react@4.3.2
   - @quiltt/core@4.3.2
@@ -454,9 +354,6 @@
 ## 4.3.1
 
 ### Patch Changes
-
-- [#366](https://github.com/quiltt/quiltt-sdks/pull/366) [`dc376b5`](https://github.com/quiltt/quiltt-sdks/commit/dc376b52dd824d7867ca74677bbfd5c54eff5cdc) Thanks [@sirwolfgang](https://github.com/sirwolfgang)! - Warn if useQuilttConnector is unmounted while in use
-- [#365](https://github.com/quiltt/quiltt-sdks/pull/365) [`5f6b8af`](https://github.com/quiltt/quiltt-sdks/commit/5f6b8af153086c77bb2227d43ae7023fb0c47985) Thanks [@rubendinho](https://github.com/rubendinho)! - Standardize SDK agent tracking header to `Quiltt-SDK-Agent` and add support for custom Apollo Links injection
 
 - Updated dependencies [[`dc376b5`](https://github.com/quiltt/quiltt-sdks/commit/dc376b52dd824d7867ca74677bbfd5c54eff5cdc)]:
   - @quiltt/react@4.3.1
@@ -488,8 +385,6 @@
 
 ### Patch Changes
 
-- [#352](https://github.com/quiltt/quiltt-sdks/pull/352) [`45b3b32`](https://github.com/quiltt/quiltt-sdks/commit/45b3b3270b69b95c9553e149e15870be4f43af3b) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Fix useQuilttInstitutions export
-
 - Updated dependencies [[`45b3b32`](https://github.com/quiltt/quiltt-sdks/commit/45b3b3270b69b95c9553e149e15870be4f43af3b)]:
   - @quiltt/react@4.2.2
   - @quiltt/core@4.2.2
@@ -498,17 +393,11 @@
 
 ### Patch Changes
 
-- [#350](https://github.com/quiltt/quiltt-sdks/pull/350) [`0233592`](https://github.com/quiltt/quiltt-sdks/commit/02335928bb872a6588c2ca81a1bd9a081053bd29) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Bugfix: early return in effect prevents reconnect from being called
-
 - Updated dependencies [[`0233592`](https://github.com/quiltt/quiltt-sdks/commit/02335928bb872a6588c2ca81a1bd9a081053bd29)]:
   - @quiltt/react@4.2.1
   - @quiltt/core@4.2.1
 
 ## 4.2.0
-
-### Minor Changes
-
-- [#348](https://github.com/quiltt/quiltt-sdks/pull/348) [`7e27845`](https://github.com/quiltt/quiltt-sdks/commit/7e2784523124c87fc6654d8336f924286daade1b) Thanks [@zubairaziz](https://github.com/zubairaziz)! - resolve connectionId persistence issue in QuilttContainer
 
 ### Patch Changes
 
@@ -517,10 +406,6 @@
   - @quiltt/core@4.2.0
 
 ## 4.1.0
-
-### Minor Changes
-
-- [#342](https://github.com/quiltt/quiltt-sdks/pull/342) [`6a387ba`](https://github.com/quiltt/quiltt-sdks/commit/6a387ba0db77912df85c6cd1924f63edf50f9cdd) Thanks [@sirwolfgang](https://github.com/sirwolfgang)! - Create useQuilttInstitutions hook
 
 ### Patch Changes
 
@@ -531,8 +416,6 @@
 ## 4.0.1
 
 ### Patch Changes
-
-- [#343](https://github.com/quiltt/quiltt-sdks/pull/343) [`da152b7`](https://github.com/quiltt/quiltt-sdks/commit/da152b7f42606defde5f55488632bcdc095be592) Thanks [@sirwolfgang](https://github.com/sirwolfgang)! - Add the ability to set nonce for the Quiltt SDK Script
 
 - Updated dependencies [[`da152b7`](https://github.com/quiltt/quiltt-sdks/commit/da152b7f42606defde5f55488632bcdc095be592)]:
   - @quiltt/react@4.0.1
@@ -606,8 +489,6 @@
 
 - [#316](https://github.com/quiltt/quiltt-sdks/pull/316) [`de5d43e`](https://github.com/quiltt/quiltt-sdks/commit/de5d43e664a8bbb04595816718f5c645a9c3df27) Thanks [@rubendinho](https://github.com/rubendinho)! - Updated `main` param to `package.json` to improve analyzing the package.
 
-- [#313](https://github.com/quiltt/quiltt-sdks/pull/313) [`3b789c9`](https://github.com/quiltt/quiltt-sdks/commit/3b789c9413ab2f9bdda965248ed7a8ccaf270172) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Update typings for QuilttButton onLoad handler
-
 - [#312](https://github.com/quiltt/quiltt-sdks/pull/312) [`11ba6a3`](https://github.com/quiltt/quiltt-sdks/commit/11ba6a3af1975349a63640bb99ed0e34ffee3f1c) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Update session handling in QuilttAuthProvider
 
 - Updated dependencies [[`de5d43e`](https://github.com/quiltt/quiltt-sdks/commit/de5d43e664a8bbb04595816718f5c645a9c3df27), [`3b789c9`](https://github.com/quiltt/quiltt-sdks/commit/3b789c9413ab2f9bdda965248ed7a8ccaf270172), [`11ba6a3`](https://github.com/quiltt/quiltt-sdks/commit/11ba6a3af1975349a63640bb99ed0e34ffee3f1c)]:
@@ -617,8 +498,6 @@
 ## 3.9.1
 
 ### Patch Changes
-
-- [#310](https://github.com/quiltt/quiltt-sdks/pull/310) [`86b39ac`](https://github.com/quiltt/quiltt-sdks/commit/86b39ac7015fcf21d1c1962df1a76f84c2af9801) Thanks [@rubendinho](https://github.com/rubendinho)! - Added explicit file extensions to import statements to comply with strict ESM module resolution.
 
 - Updated dependencies [[`86b39ac`](https://github.com/quiltt/quiltt-sdks/commit/86b39ac7015fcf21d1c1962df1a76f84c2af9801)]:
   - @quiltt/react@3.9.1
@@ -642,8 +521,6 @@
 ## 3.8.2
 
 ### Patch Changes
-
-- [#303](https://github.com/quiltt/quiltt-sdks/pull/303) [`d1ceb66`](https://github.com/quiltt/quiltt-sdks/commit/d1ceb6648f4c2747988f8d6cacbee9946beaea0c) Thanks [@rubendinho](https://github.com/rubendinho)! - Reduce bundle size
 
 - Updated dependencies [[`d1ceb66`](https://github.com/quiltt/quiltt-sdks/commit/d1ceb6648f4c2747988f8d6cacbee9946beaea0c)]:
   - @quiltt/react@3.8.2
@@ -677,8 +554,6 @@
 ## 3.7.4
 
 ### Patch Changes
-
-- [#296](https://github.com/quiltt/quiltt-sdks/pull/296) [`bff9d1f`](https://github.com/quiltt/quiltt-sdks/commit/bff9d1fb4f89c9c762de85ca0d8ee9a35dd10f7e) Thanks [@rubendinho](https://github.com/rubendinho)! - Fix typings
 
 - Updated dependencies [[`bff9d1f`](https://github.com/quiltt/quiltt-sdks/commit/bff9d1fb4f89c9c762de85ca0d8ee9a35dd10f7e)]:
   - @quiltt/react@3.7.4
@@ -716,10 +591,6 @@
 
 ## 3.7.0
 
-### Minor Changes
-
-- [#281](https://github.com/quiltt/quiltt-sdks/pull/281) [`0c5fd75`](https://github.com/quiltt/quiltt-sdks/commit/0c5fd757fa1f688f205431c21c98bb54ea6ea72a) Thanks [@sirwolfgang](https://github.com/sirwolfgang)! - Add bindings for a new onOpen callback event for Connector Modals
-
 ### Patch Changes
 
 - Updated dependencies [[`0c5fd75`](https://github.com/quiltt/quiltt-sdks/commit/0c5fd757fa1f688f205431c21c98bb54ea6ea72a)]:
@@ -730,8 +601,6 @@
 
 ### Patch Changes
 
-- [#278](https://github.com/quiltt/quiltt-sdks/pull/278) [`0d9e43d`](https://github.com/quiltt/quiltt-sdks/commit/0d9e43d580d73279d7c078219749b000ebb59b02) Thanks [@rubendinho](https://github.com/rubendinho)! - Fix debug config during CI
-
 - Updated dependencies [[`0d9e43d`](https://github.com/quiltt/quiltt-sdks/commit/0d9e43d580d73279d7c078219749b000ebb59b02)]:
   - @quiltt/core@3.6.14
   - @quiltt/react@3.6.14
@@ -740,8 +609,6 @@
 
 ### Patch Changes
 
-- [#276](https://github.com/quiltt/quiltt-sdks/pull/276) [`be1f9be`](https://github.com/quiltt/quiltt-sdks/commit/be1f9be957ef1a7686e6a25807275186c8dd51b4) Thanks [@rubendinho](https://github.com/rubendinho)! - Replace manually imported ActionCable code with official npm package
-
 - Updated dependencies [[`be1f9be`](https://github.com/quiltt/quiltt-sdks/commit/be1f9be957ef1a7686e6a25807275186c8dd51b4)]:
   - @quiltt/core@3.6.13
   - @quiltt/react@3.6.13
@@ -749,8 +616,6 @@
 ## 3.6.12
 
 ### Patch Changes
-
-- [#274](https://github.com/quiltt/quiltt-sdks/pull/274) [`d684ade`](https://github.com/quiltt/quiltt-sdks/commit/d684ade520689d6207c699cea0681a9331f06069) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Update 'rol' types in PrivateClaims
 
 - Updated dependencies [[`d684ade`](https://github.com/quiltt/quiltt-sdks/commit/d684ade520689d6207c699cea0681a9331f06069)]:
   - @quiltt/core@3.6.12
@@ -850,19 +715,11 @@
 
 ### Patch Changes
 
-- [#232](https://github.com/quiltt/quiltt-sdks/pull/232) [`7a119af`](https://github.com/quiltt/quiltt-sdks/commit/7a119af8b0ba826b8df81f5eb242c002379b4e56) Thanks [@sirwolfgang](https://github.com/sirwolfgang)! - Improve typeof checks for mobile environments
-
 - Updated dependencies [[`7a119af`](https://github.com/quiltt/quiltt-sdks/commit/7a119af8b0ba826b8df81f5eb242c002379b4e56)]:
   - @quiltt/core@3.6.1
   - @quiltt/react@3.6.1
 
 ## 3.6.0
-
-### Minor Changes
-
-- [#229](https://github.com/quiltt/quiltt-sdks/pull/229) [`f688563`](https://github.com/quiltt/quiltt-sdks/commit/f6885635d989fb75918cb13e449ca0eec60850fc) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Fix Websockets protocol variable
-
-- [#229](https://github.com/quiltt/quiltt-sdks/pull/229) [`f688563`](https://github.com/quiltt/quiltt-sdks/commit/f6885635d989fb75918cb13e449ca0eec60850fc) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Fix Websockets protocol variable
 
 ### Patch Changes
 
@@ -873,8 +730,6 @@
 ## 3.5.6
 
 ### Patch Changes
-
-- [#223](https://github.com/quiltt/quiltt-sdks/pull/223) [`8c5041c`](https://github.com/quiltt/quiltt-sdks/commit/8c5041c1670fd7dbfed06355c06888256ce84b08) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Remove axios and replace with native fetch
 
 - Updated dependencies [[`8c5041c`](https://github.com/quiltt/quiltt-sdks/commit/8c5041c1670fd7dbfed06355c06888256ce84b08)]:
   - @quiltt/react@3.5.6
@@ -911,8 +766,6 @@
 ## 3.5.3
 
 ### Patch Changes
-
-- [#204](https://github.com/quiltt/quiltt-sdks/pull/204) [`ee42bf1`](https://github.com/quiltt/quiltt-sdks/commit/ee42bf137db1029807df49f66ff7e57117e8ace9) Thanks [@sirwolfgang](https://github.com/sirwolfgang)! - Add missing type to QuilttButton
 
 - [#197](https://github.com/quiltt/quiltt-sdks/pull/197) [`8d9f24c`](https://github.com/quiltt/quiltt-sdks/commit/8d9f24c59102db5dc665195a6145cfac2c80e2c0) Thanks [@rubendinho](https://github.com/rubendinho)! - Update docs, and fix typo in types
 

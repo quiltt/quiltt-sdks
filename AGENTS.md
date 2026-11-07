@@ -284,7 +284,7 @@ pnpm changeset     # Interactive prompt to create a changeset
 
 - All 8 packages are bumped at the same time and share one version (fixed group in `.changeset/config.json`), so they always match across platforms and can never release partially — a fragment therefore uses one bump type on every package it lists
 - A package added under `packages/` must be added to that `fixed` list in the same PR, or it versions on its own
-- List every package — all 8 — in every fragment: each package's `CHANGELOG.md` records the change, including platform wrappers that only re-export it (`@quiltt/react-native`, `@quiltt/capacitor`) and the native SDKs with no JavaScript surface (`@quiltt/android`, `@quiltt/ios`, `@quiltt/flutter`)
+- List every package whose behaviour changed, not every package released: only listed packages record the fragment in their `CHANGELOG.md`, so listing one that did not change misattributes the work. Wrappers are listed when the fragment says something true about them; the native SDKs usually get a bare version heading
 - Types: `major` (breaking), `minor` (new features), `patch` (bug fixes)
 
 ### Key Reference Files

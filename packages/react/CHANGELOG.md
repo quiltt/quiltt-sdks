@@ -6,21 +6,17 @@
 
 - [#590](https://github.com/quiltt/quiltt-sdks/pull/590) [`4d54ff7`](https://github.com/quiltt/quiltt-sdks/commit/4d54ff78df69cb7eb6e83edd7500ab1669d085b3) Thanks [@sirwolfgang](https://github.com/sirwolfgang)! - Signing out now sticks. `importSession` validated a token with a request and wrote it afterwards, so a sign-out — or a different sign-in — that landed while that request was in flight was overwritten by the late response, and an app that redirects on "signed in" sent the user back where they came from. The token is now adopted only if the session has not moved on in the meantime, and `importSession` resolves `false` when it did not; two overlapping imports of the same token both resolve `true`.
 
-  - **Fixed** — a subscription authenticates with the session its request used, rather than the shared session store. A request whose session came from elsewhere failed with `UNAUTHENTICATED` / `NO_TOKEN`, and a store holding a different session connected the WebSocket as that user.
-  - **Fixed** — a `401` signs out the session that sent the request, rather than only the shared store, so a server render no longer resends a rejected token on every later query. A rejection that arrives after the session was replaced no longer signs out the newer session — whether it came from a query or from the import validating a token — and no longer cancels a sign-in that is still being validated.
+  - **Fixed** — a sign-out made in another tab while this one is validating a token is now seen, instead of the token being adopted when the answer arrives and bringing the ended session back.
+  - **Fixed** — a rejected token no longer cancels a different sign-in that is still being validated, and no longer adopts a token the server has already rejected.
   - **Fixed** — `revokeSession`, and the timer that ends an expiring session, no longer sign out a session that was adopted while they were waiting. A revoke answered after a new sign-in, or the previous session's timer firing after a new one was stored, cleared the new session.
-  - **Fixed** — a `@quiltt/react` app sees a sign-out made in another tab while it is validating a token, instead of adopting that token when the answer arrives and bringing the ended session back.
-  - **Fixed** — a `@quiltt/vue` tab no longer signs out a session another tab has since saved. An expiry it observes — a stale token arriving late, or one that lapses while a newer sign-in is already stored — ends that tab's own session without writing over the stored one.
-  - **Fixed** — a server-rendered `@quiltt/vue` app keeps each request's session to itself. One request could render another request's session or be signed out by it, and its GraphQL calls could go out without a session of their own or be batched with another request's under one `authorization` header.
-  - **Fixed** — `QuilttAuthProvider` no longer resets the Apollo cache for the session a mount starts with, so an app reusing one client across route changes no longer loses cached data and refetches it. It still resets when the session really changes — including one that changed while the provider was unmounted, or had already expired by the time it mounted — so one account's cached results are never shown to another.
-  - **Fixed** — a `@quiltt/vue` app installed with a `token` option now saves it. The option filled only the app's own session, so its GraphQL requests went out with no token at all and importing that same token reported failure.
+  - **Fixed** — `QuilttAuthProvider` no longer resets the Apollo cache for the session a mount starts with, so an app reusing one client across route changes no longer loses cached data and refetches it. It still resets when the session really changes — including one that changed while the provider was unmounted, or had already expired by the time it mounted — so one account's cached results are never shown to another, and a client passed in later is recorded against the session of that moment.
   - **Fixed** — `useStorage` no longer re-renders in a loop, ending in React's "Maximum update depth exceeded", when it persists an object under an inline default such as `useStorage('settings', {})`.
   - **Fixed** — `useStorage` no longer reads or writes the shared store on a server, where one request's value was visible to the next.
-  - **Changed** — `useStorage`'s initial value behaves like `useState`'s default. It now applies in browsers, where a missing key previously read back as `null` and the default was ignored; it applies only to a key that was never written, so a cleared value stays cleared — including after a reload — and a hook pointed at a new key no longer inherits the previous key's value; and setting a value equal to it saves it, where the write used to be dropped as a no-op. A cleared key is saved as `null`, which is how a later visit tells it apart from one that was never written, so `LocalStorage#get` reports `null` for it.
+  - **Changed** — `useStorage`'s initial value behaves like `useState`'s default. It now applies in browsers, where a missing key previously read back as `null` and the default was ignored; it applies only to a key that was never written, so a cleared value stays cleared — including after a reload — and a hook pointed at a new key no longer inherits the previous key's value; and setting a value equal to it saves it, where the write used to be dropped as a no-op.
   - **Changed** — `useStorage` updater functions receive the current stored value instead of the one captured when the setter was created.
   - **Added** — `useStorage` reports whether its value has been read from storage yet, as `restored`: the third element of its tuple, `useSession`'s fourth, and a named property on `useQuilttSession`. It is `false` only for the render that has to match the server's markup, which cannot read storage, so an empty value there does not mean signed out. Redirects and login screens should wait for it.
   - **Added** — `useSession` returns a `SessionController` with `snapshot()` and `adopt(token, at)`, for work that resumes after an `await` and has to know whether the session moved on while it waited. `adopt` reports success only when the session now holds the token.
-  - **Added** — `Storage#has(key)` reports whether a key was ever written, which `get` cannot answer: a key written empty and one never written both read back empty. `@quiltt/core`'s session helpers and types — `createSessionController`, `SESSION_STORAGE_KEY`, `sharedSessionTokenSource`, `SessionController`, `SessionTokenSource` and the rest — are exported from `@quiltt/react`, `@quiltt/vue`, and `@quiltt/react-native` as well, and `@quiltt/core` now exposes them at `@quiltt/core/session`.
+  - **Added** — the session helpers and types above are exported from `@quiltt/react` as well as `@quiltt/core`, so an app can use them without depending on `@quiltt/core` directly.
 
 ### Patch Changes
 
@@ -95,13 +91,6 @@
 
 ### Patch Changes
 
-- [#483](https://github.com/quiltt/quiltt-sdks/pull/483) [`5c60f90`](https://github.com/quiltt/quiltt-sdks/commit/5c60f90a00e7d2a9eb7a7a5a9139a47d78677101) Thanks [@jethfo](https://github.com/jethfo)! - Fix dark mode background flashes in the React Native Connector
-
-  When using `themeMode="dark"`, the native wrapper around the Quiltt Connector WebView now uses transparent backgrounds instead of hardcoded light ones. This eliminates white flashes and white safe-area insets during loading.
-
-  - **Android**: SafeAreaView wrapper background set to `transparent` to prevent white bleed in the status bar area
-  - **iOS**: WebView background set to `transparent` and native loading spinner disabled (`startInLoadingState: false`), since Quiltt renders its own branded loader inside the WebView HTML
-
 - Updated dependencies [[`5c60f90`](https://github.com/quiltt/quiltt-sdks/commit/5c60f90a00e7d2a9eb7a7a5a9139a47d78677101)]:
   - @quiltt/core@6.0.1
 
@@ -122,15 +111,6 @@
 
 ### Patch Changes
 
-- [#469](https://github.com/quiltt/quiltt-sdks/pull/469) [`292fc83`](https://github.com/quiltt/quiltt-sdks/commit/292fc8313e2c1dcb58156d5d44ca135857b1f40c) Thanks [@zubairaziz](https://github.com/zubairaziz)! - ## Vue: Add feature parity with React package
-
-  - **New `QuilttContainer` component** — renders the connector inline, matching the React package API. Deprecates `QuilttConnector` in favor of this component.
-  - **New `useQuilttConnector` composable** — provides SDK loading, connector lifecycle management, and session-based authentication outside of components.
-  - **`QuilttButton` enhancements** — added `@click` event passthrough with `event.preventDefault()` support, `forceRemountOnConnectionChange` prop, and `quiltt-connection` / `quiltt-app-launcher-uri` attributes.
-  - **Additional connector events** — added `@open`, `@exit`, and `@event` emits to `QuilttButton` and `QuilttContainer`.
-  - **Force remount mechanism** — new `forceRemountOnConnectionChange` prop on `QuilttButton`, `QuilttContainer`, and `QuilttConnector` forces a complete remount when `connectionId` changes, useful for ensuring clean connector state.
-  - **Deprecation check workflow** — CI check that validates deprecated component usage (`.github/actions/check-deprecations`).
-
 - Updated dependencies [[`0669bd0`](https://github.com/quiltt/quiltt-sdks/commit/0669bd08048010791008f62b5368ee3a5beeb7d0), [`292fc83`](https://github.com/quiltt/quiltt-sdks/commit/292fc8313e2c1dcb58156d5d44ca135857b1f40c)]:
   - @quiltt/core@5.3.0
 
@@ -138,16 +118,12 @@
 
 ### Patch Changes
 
-- [#460](https://github.com/quiltt/quiltt-sdks/pull/460) [`30d2745`](https://github.com/quiltt/quiltt-sdks/commit/30d2745186a38356ec6ecdce32dc70577c4262a3) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Fix OAuth URL double-encoding validation bug in Android and iOS SDKs. URLs arriving double-encoded from OAuth providers now normalize correctly before HTTPS validation, allowing OAuth flows to launch successfully in the browser.
-
 - Updated dependencies [[`30d2745`](https://github.com/quiltt/quiltt-sdks/commit/30d2745186a38356ec6ecdce32dc70577c4262a3)]:
   - @quiltt/core@5.2.5
 
 ## 5.2.4
 
 ### Patch Changes
-
-- [#451](https://github.com/quiltt/quiltt-sdks/pull/451) [`e8179ce`](https://github.com/quiltt/quiltt-sdks/commit/e8179ce5dd340b0804da1836c97aec62604d91f2) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Fix SDK Release
 
 - Updated dependencies [[`e8179ce`](https://github.com/quiltt/quiltt-sdks/commit/e8179ce5dd340b0804da1836c97aec62604d91f2)]:
   - @quiltt/core@5.2.4
@@ -194,23 +170,7 @@
 
 ### Patch Changes
 
-- [#425](https://github.com/quiltt/quiltt-sdks/pull/425) [`c684b3b`](https://github.com/quiltt/quiltt-sdks/commit/c684b3b5f6ea2829e2abfa2a75c0d430edad66a5) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Add @quiltt/capacitor package for Ionic and Capacitor apps
-
-  - Framework-agnostic by default — works with Vue, Angular, Svelte, or vanilla JS
-  - Vue 3 components via `@quiltt/capacitor/vue` subpath
-  - React components via `@quiltt/capacitor/react` subpath
-  - Native iOS (Swift) and Android (Kotlin) plugins for OAuth deep linking
-  - Supports Capacitor 6, 7, and 8
-
-  Add @quiltt/vue package for Vue 3 applications
-
-  - `QuilttPlugin` for session management via Vue's provide/inject
-  - `useQuilttSession` composable for authentication
-  - `useQuilttConnector` composable for programmatic control
-  - `QuilttButton`, `QuilttConnector`, `QuilttContainer` components
-  - Add `@quiltt/capacitor/vue` entry point for Capacitor apps
-
-  Rename `oauthRedirectUrl` to `appLauncherUrl` for mobile OAuth flows
+- [#425](https://github.com/quiltt/quiltt-sdks/pull/425) [`c684b3b`](https://github.com/quiltt/quiltt-sdks/commit/c684b3b5f6ea2829e2abfa2a75c0d430edad66a5) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Rename `oauthRedirectUrl` to `appLauncherUrl` for mobile OAuth flows
 
   This change introduces `appLauncherUrl` as the new preferred property name for specifying the Universal Link (iOS) or App Link (Android) that redirects users back to your app after OAuth authentication.
 
@@ -237,8 +197,6 @@
 ## 5.1.2
 
 ### Patch Changes
-
-- [#423](https://github.com/quiltt/quiltt-sdks/pull/423) [`aca4d51`](https://github.com/quiltt/quiltt-sdks/commit/aca4d51bc699f80e50977d28b120280db9a4414d) Thanks [@sirwolfgang](https://github.com/sirwolfgang)! - Fix VersionLink to allow custom Quiltt-SDK-Agent header override
 
 - Updated dependencies [[`aca4d51`](https://github.com/quiltt/quiltt-sdks/commit/aca4d51bc699f80e50977d28b120280db9a4414d)]:
   - @quiltt/core@5.1.2
@@ -273,8 +231,6 @@
 
 ### Patch Changes
 
-- [#412](https://github.com/quiltt/quiltt-sdks/pull/412) [`099070b`](https://github.com/quiltt/quiltt-sdks/commit/099070b984f7375491e1c736bc3fbd35c93c7fd3) Thanks [@rubendinho](https://github.com/rubendinho)! - Improve User Agent telemetry
-
 - [#410](https://github.com/quiltt/quiltt-sdks/pull/410) [`628887c`](https://github.com/quiltt/quiltt-sdks/commit/628887cc592b492a1fb38ff5898aeda969140855) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Re-Export Upstream Packages
 
 - Updated dependencies [[`099070b`](https://github.com/quiltt/quiltt-sdks/commit/099070b984f7375491e1c736bc3fbd35c93c7fd3), [`628887c`](https://github.com/quiltt/quiltt-sdks/commit/628887cc592b492a1fb38ff5898aeda969140855)]:
@@ -296,8 +252,6 @@
 - [#403](https://github.com/quiltt/quiltt-sdks/pull/403) [`b714ff3`](https://github.com/quiltt/quiltt-sdks/commit/b714ff3b3ee878445ca8e09903153ac0b43d693b) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Prevent Infinite Re-Renders in QuilttProvider
 
 - [#399](https://github.com/quiltt/quiltt-sdks/pull/399) [`77d11b6`](https://github.com/quiltt/quiltt-sdks/commit/77d11b69ceb950da9ca500aa73bae7a3abdfb3a2) Thanks [@CarltonHowell](https://github.com/CarltonHowell)! - Output commonJS
-
-- [#402](https://github.com/quiltt/quiltt-sdks/pull/402) [`97eccbe`](https://github.com/quiltt/quiltt-sdks/commit/97eccbe6df42843307a11d28a0a8b5a36e43f3d9) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Remove Node.js Dependencies in React Native Builds
 
 - [#401](https://github.com/quiltt/quiltt-sdks/pull/401) [`2bf07c3`](https://github.com/quiltt/quiltt-sdks/commit/2bf07c36bf8dc573f01db8f4c69a48e05d313b8b) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Improve expired auth token detection and clearing
 
@@ -331,10 +285,6 @@
   - @quiltt/core@4.5.1
 
 ## 4.5.0
-
-### Minor Changes
-
-- [#386](https://github.com/quiltt/quiltt-sdks/pull/386) [`0bf706c`](https://github.com/quiltt/quiltt-sdks/commit/0bf706ce2ad926304d6eac739ee58971736f913e) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Update platform webview props
 
 ### Patch Changes
 
@@ -427,8 +377,6 @@
 
 ### Patch Changes
 
-- [#355](https://github.com/quiltt/quiltt-sdks/pull/355) [`6d32f3e`](https://github.com/quiltt/quiltt-sdks/commit/6d32f3e40e7554c512ca63ef532d689d5485e10c) Thanks [@rubendinho](https://github.com/rubendinho)! - Improve error handling in React Native
-
 - Updated dependencies [[`6d32f3e`](https://github.com/quiltt/quiltt-sdks/commit/6d32f3e40e7554c512ca63ef532d689d5485e10c)]:
   - @quiltt/core@4.2.3
 
@@ -483,10 +431,6 @@
 
 ## 4.0.0
 
-### Major Changes
-
-- [#333](https://github.com/quiltt/quiltt-sdks/pull/333) [`5afca4a`](https://github.com/quiltt/quiltt-sdks/commit/5afca4a45f357afbb7f6af02088f86230f351e18) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Migrate to 'Navigate' message for URL handling
-
 ### Patch Changes
 
 - Updated dependencies [[`5afca4a`](https://github.com/quiltt/quiltt-sdks/commit/5afca4a45f357afbb7f6af02088f86230f351e18)]:
@@ -495,8 +439,6 @@
 ## 3.9.7
 
 ### Patch Changes
-
-- [#330](https://github.com/quiltt/quiltt-sdks/pull/330) [`e7b8e74`](https://github.com/quiltt/quiltt-sdks/commit/e7b8e74613f7725c6f2653be6d8ac0e06cce661d) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Make OAuth Handling Safer
 
 - Updated dependencies [[`e7b8e74`](https://github.com/quiltt/quiltt-sdks/commit/e7b8e74613f7725c6f2653be6d8ac0e06cce661d)]:
   - @quiltt/core@3.9.7
@@ -522,8 +464,6 @@
 ## 3.9.4
 
 ### Patch Changes
-
-- [#321](https://github.com/quiltt/quiltt-sdks/pull/321) [`642ec0f`](https://github.com/quiltt/quiltt-sdks/commit/642ec0f34f2506672993b82785b5b5ddb5c69069) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Bugfix: iOS WebView header drag behavior and scrolling
 
 - Updated dependencies [[`642ec0f`](https://github.com/quiltt/quiltt-sdks/commit/642ec0f34f2506672993b82785b5b5ddb5c69069)]:
   - @quiltt/core@3.9.4
@@ -656,8 +596,6 @@
 
 ### Patch Changes
 
-- [#278](https://github.com/quiltt/quiltt-sdks/pull/278) [`0d9e43d`](https://github.com/quiltt/quiltt-sdks/commit/0d9e43d580d73279d7c078219749b000ebb59b02) Thanks [@rubendinho](https://github.com/rubendinho)! - Fix debug config during CI
-
 - Updated dependencies [[`0d9e43d`](https://github.com/quiltt/quiltt-sdks/commit/0d9e43d580d73279d7c078219749b000ebb59b02)]:
   - @quiltt/core@3.6.14
 
@@ -665,16 +603,12 @@
 
 ### Patch Changes
 
-- [#276](https://github.com/quiltt/quiltt-sdks/pull/276) [`be1f9be`](https://github.com/quiltt/quiltt-sdks/commit/be1f9be957ef1a7686e6a25807275186c8dd51b4) Thanks [@rubendinho](https://github.com/rubendinho)! - Replace manually imported ActionCable code with official npm package
-
 - Updated dependencies [[`be1f9be`](https://github.com/quiltt/quiltt-sdks/commit/be1f9be957ef1a7686e6a25807275186c8dd51b4)]:
   - @quiltt/core@3.6.13
 
 ## 3.6.12
 
 ### Patch Changes
-
-- [#274](https://github.com/quiltt/quiltt-sdks/pull/274) [`d684ade`](https://github.com/quiltt/quiltt-sdks/commit/d684ade520689d6207c699cea0681a9331f06069) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Update 'rol' types in PrivateClaims
 
 - Updated dependencies [[`d684ade`](https://github.com/quiltt/quiltt-sdks/commit/d684ade520689d6207c699cea0681a9331f06069)]:
   - @quiltt/core@3.6.12
@@ -701,16 +635,12 @@
 
 ### Patch Changes
 
-- [#260](https://github.com/quiltt/quiltt-sdks/pull/260) [`6e80930`](https://github.com/quiltt/quiltt-sdks/commit/6e80930f84013f483e2c75fcb37a28dc4996dadc) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Refactor QuilttConnector to remove URL allow list
-
 - Updated dependencies [[`6e80930`](https://github.com/quiltt/quiltt-sdks/commit/6e80930f84013f483e2c75fcb37a28dc4996dadc)]:
   - @quiltt/core@3.6.9
 
 ## 3.6.8
 
 ### Patch Changes
-
-- [#258](https://github.com/quiltt/quiltt-sdks/pull/258) [`dc97e95`](https://github.com/quiltt/quiltt-sdks/commit/dc97e95dfa73bc1ccf09add6af70e4f95a458fab) Thanks [@rubendinho](https://github.com/rubendinho)! - Add URLs to WebView allowList
 
 - Updated dependencies [[`dc97e95`](https://github.com/quiltt/quiltt-sdks/commit/dc97e95dfa73bc1ccf09add6af70e4f95a458fab)]:
   - @quiltt/core@3.6.8
@@ -728,8 +658,6 @@
 
 ### Patch Changes
 
-- [#248](https://github.com/quiltt/quiltt-sdks/pull/248) [`d15297e`](https://github.com/quiltt/quiltt-sdks/commit/d15297e4dea40c90dab97d1f8e8797b5cfe8395c) Thanks [@sirwolfgang](https://github.com/sirwolfgang)! - Fix issue with loading Plaid's new Link
-
 - Updated dependencies [[`d15297e`](https://github.com/quiltt/quiltt-sdks/commit/d15297e4dea40c90dab97d1f8e8797b5cfe8395c)]:
   - @quiltt/core@3.6.5
 
@@ -745,8 +673,6 @@
 ## 3.6.3
 
 ### Patch Changes
-
-- [#240](https://github.com/quiltt/quiltt-sdks/pull/240) [`96556d4`](https://github.com/quiltt/quiltt-sdks/commit/96556d4e4d29b1a5623b78f60d97c49a974e44e8) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Pre-transpile '@quiltt/react-native' code before publish
 
 - Updated dependencies [[`96556d4`](https://github.com/quiltt/quiltt-sdks/commit/96556d4e4d29b1a5623b78f60d97c49a974e44e8)]:
   - @quiltt/core@3.6.3
@@ -764,18 +690,10 @@
 
 ### Patch Changes
 
-- [#232](https://github.com/quiltt/quiltt-sdks/pull/232) [`7a119af`](https://github.com/quiltt/quiltt-sdks/commit/7a119af8b0ba826b8df81f5eb242c002379b4e56) Thanks [@sirwolfgang](https://github.com/sirwolfgang)! - Improve typeof checks for mobile environments
-
 - Updated dependencies [[`7a119af`](https://github.com/quiltt/quiltt-sdks/commit/7a119af8b0ba826b8df81f5eb242c002379b4e56)]:
   - @quiltt/core@3.6.1
 
 ## 3.6.0
-
-### Minor Changes
-
-- [#229](https://github.com/quiltt/quiltt-sdks/pull/229) [`f688563`](https://github.com/quiltt/quiltt-sdks/commit/f6885635d989fb75918cb13e449ca0eec60850fc) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Fix Websockets protocol variable
-
-- [#229](https://github.com/quiltt/quiltt-sdks/pull/229) [`f688563`](https://github.com/quiltt/quiltt-sdks/commit/f6885635d989fb75918cb13e449ca0eec60850fc) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Fix Websockets protocol variable
 
 ### Patch Changes
 
@@ -785,8 +703,6 @@
 ## 3.5.6
 
 ### Patch Changes
-
-- [#223](https://github.com/quiltt/quiltt-sdks/pull/223) [`8c5041c`](https://github.com/quiltt/quiltt-sdks/commit/8c5041c1670fd7dbfed06355c06888256ce84b08) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Remove axios and replace with native fetch
 
 - Updated dependencies [[`8c5041c`](https://github.com/quiltt/quiltt-sdks/commit/8c5041c1670fd7dbfed06355c06888256ce84b08)]:
   - @quiltt/core@3.5.6
@@ -800,8 +716,6 @@
 - [#213](https://github.com/quiltt/quiltt-sdks/pull/213) [`5648e3c`](https://github.com/quiltt/quiltt-sdks/commit/5648e3c91d572d97ad88115710ab840b98e1d469) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Add exported files to '@quiltt/react-native'"
 
 - [#210](https://github.com/quiltt/quiltt-sdks/pull/210) [`e57fdb8`](https://github.com/quiltt/quiltt-sdks/commit/e57fdb8c21e90b6a3492bc7a0c858031384caebf) Thanks [@zubairaziz](https://github.com/zubairaziz)! - Migrate bundler to 'bunchee'
-
-- [#215](https://github.com/quiltt/quiltt-sdks/pull/215) [`c36abb4`](https://github.com/quiltt/quiltt-sdks/commit/c36abb47cffea3d754fd243b321f2ae50518c297) Thanks [@tom-quiltt](https://github.com/tom-quiltt)! - Remove React Native SDK about:srcdoc warning
 
 - [#216](https://github.com/quiltt/quiltt-sdks/pull/216) [`2895899`](https://github.com/quiltt/quiltt-sdks/commit/289589913c55f8dad2e818d71c4be39c93e5a52a) Thanks [@tom-quiltt](https://github.com/tom-quiltt)! - Fix release changeset command
 
@@ -880,8 +794,6 @@
 ## 3.3.10
 
 ### Patch Changes
-
-- [#190](https://github.com/quiltt/quiltt-sdks/pull/190) [`21ead66`](https://github.com/quiltt/quiltt-sdks/commit/21ead662e7626f906562f952c9d1c0bc2c859985) Thanks [@tom-quiltt](https://github.com/tom-quiltt)! - Fix Android App with Chase app installed not able to launch Chase app
 
 - Updated dependencies [[`21ead66`](https://github.com/quiltt/quiltt-sdks/commit/21ead662e7626f906562f952c9d1c0bc2c859985)]:
   - @quiltt/core@3.3.10
