@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@quiltt/vue": "workspace:*",
-    "nuxt": "4.6.3"
+    "nuxt": "4.6.4"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.6",
