@@ -213,6 +213,49 @@ describe('ErrorLink', () => {
     consoleWarnSpy.mockRestore()
   })
 
+  it('should clear the session when the request carried a non-bearer authorization', async () => {
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const error = Object.assign(new Error('Unauthorized'), {
+      statusCode: 401,
+      bodyText: 'Unauthorized',
+      response: new Response('Unauthorized', { status: 401 }),
+    })
+
+    const basicAuth = new ApolloLink((operation, forward) => {
+      operation.setContext({ headers: { authorization: 'Basic dXNlcjpwYXNz' } })
+      return forward(operation)
+    })
+
+    const failingLink = new ApolloLink(
+      () =>
+        new Observable((observer) => {
+          observer.error(error)
+        })
+    )
+
+    const client = new ApolloClient({
+      cache: new InMemoryCache(),
+      link: ErrorLink.concat(basicAuth).concat(failingLink),
+    })
+
+    try {
+      await client.query({
+        query: gql`
+          query Test {
+            data
+          }
+        `,
+      })
+    } catch (_e) {
+      // Expected to throw
+    }
+
+    // No bearer token to compare against, so the chain clears as it always has.
+    expect(GlobalStorage.set).toHaveBeenCalledWith('session', null)
+    consoleWarnSpy.mockRestore()
+  })
+
   it('should handle non-401 network errors without clearing session', async () => {
     const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 

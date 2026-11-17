@@ -93,6 +93,46 @@ describe('useQuilttResolvable', () => {
     unmount()
   })
 
+  it('returns null when the connector ID is missing', async () => {
+    const onError = vi.fn()
+    const { result, unmount } = mountComposable(() => useQuilttResolvable('', onError))
+
+    expect(await result.checkResolvable({ plaid: 'provider' })).toBeNull()
+    expect(onError).toHaveBeenCalledWith('Missing connector ID')
+    expect(mocks.checkResolvableMock).not.toHaveBeenCalled()
+
+    unmount()
+  })
+
+  it('reports null when a 200 response carries no resolvable flag', async () => {
+    mocks.checkResolvableMock.mockResolvedValue({ status: 200, data: null } as any)
+
+    const { result, unmount } = mountComposable(() => useQuilttResolvable('connector_test'))
+
+    expect(await result.checkResolvable({ plaid: 'provider' })).toBeNull()
+    expect(result.isResolvable.value).toBeNull()
+    expect(result.error.value).toBeNull()
+
+    unmount()
+  })
+
+  it('falls back to a generic message for responses and rejections without one', async () => {
+    const onError = vi.fn()
+    const { result, unmount } = mountComposable(() =>
+      useQuilttResolvable('connector_test', onError)
+    )
+
+    mocks.checkResolvableMock.mockResolvedValueOnce({ status: 500, data: null } as any)
+    expect(await result.checkResolvable({ plaid: 'provider' })).toBeNull()
+    expect(onError).toHaveBeenCalledWith('Failed to check resolvability')
+
+    mocks.checkResolvableMock.mockRejectedValueOnce({})
+    expect(await result.checkResolvable({ plaid: 'provider' })).toBeNull()
+    expect(onError).toHaveBeenCalledWith('Unknown error occurred while checking resolvability')
+
+    unmount()
+  })
+
   it('handles non-200 and rejected API responses', async () => {
     const onError = vi.fn()
     const { result, unmount } = mountComposable(() =>

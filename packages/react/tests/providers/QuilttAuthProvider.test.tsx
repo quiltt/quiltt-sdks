@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render } from '@testing-library/react'
+import { act, render } from '@testing-library/react'
 
 import { createVersionLink, InMemoryCache, QuilttClient, TerminatingLink } from '@quiltt/core'
 
@@ -9,13 +9,24 @@ import { isDeepEqual } from '@/utils'
 // Create a mock function outside to track calls
 const mockImportSession = vi.fn()
 // Controllable session value for tests that exercise session-expiry behaviour
-let mockSession: object | null = {}
+let mockSession: object | null | undefined = {}
+
+// Controllable "storage has been read" flag; the cache effect does nothing until it is set.
+let mockRestored: boolean | undefined
+
+// Constructor arguments captured from the mocked `@quiltt/core` classes, so a test can assert what
+// the provider actually built instead of only that it rendered.
+const headersLinkCalls = vi.hoisted(() => [] as Array<{ options?: unknown }>)
+const clientOptions = vi.hoisted(() => [] as Array<Record<string, unknown>>)
 
 // Mock the useQuilttSession hook
 vi.mock('@/hooks', () => ({
   useQuilttSession: () => ({
     get session() {
       return mockSession
+    },
+    get restored() {
+      return mockRestored
     },
     importSession: mockImportSession,
   }),
@@ -36,15 +47,28 @@ vi.mock('@quiltt/core', () => {
   class MockQuilttClient {
     // resetStore must return a promise since the provider chains .catch() on it
     resetStore = vi.fn(() => Promise.resolve())
+
+    constructor(options?: Record<string, unknown>) {
+      clientOptions.push(options ?? {})
+    }
   }
   class MockInMemoryCache {}
   class MockTerminatingLink {}
   class MockApolloLink {}
+  class MockHeadersLink {
+    constructor(options?: unknown) {
+      this.options = options
+      headersLinkCalls.push(this)
+    }
+
+    options?: unknown
+  }
 
   return {
     QuilttClient: MockQuilttClient,
     InMemoryCache: MockInMemoryCache,
     TerminatingLink: MockTerminatingLink,
+    HeadersLink: MockHeadersLink,
     createVersionLink: vi.fn(() => new MockApolloLink()),
     // The provider reads the stored session during render to tell a mount-time restore apart from a
     // session change, so it needs the store even here.
@@ -57,6 +81,7 @@ describe('QuilttAuthProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockSession = {} // reset to a truthy session before each test
+    mockRestored = undefined
   })
 
   it('renders children correctly', () => {
@@ -232,6 +257,128 @@ describe('QuilttAuthProvider', () => {
     expect(vi.mocked(isDeepEqual)).toHaveBeenCalled()
 
     // Restore default behaviour for subsequent tests
+    vi.mocked(isDeepEqual).mockReturnValue(true)
+  })
+
+  it('does not reset a client attached after mount when the session is unread', () => {
+    mockRestored = true
+    mockSession = undefined
+
+    const firstClient = new QuilttClient({
+      customLinks: [TerminatingLink],
+      cache: new InMemoryCache(),
+      versionLink: createVersionLink('Test'),
+    })
+    const secondClient = new QuilttClient({
+      customLinks: [TerminatingLink],
+      cache: new InMemoryCache(),
+      versionLink: createVersionLink('Test'),
+    })
+
+    const { rerender } = render(
+      <QuilttAuthProvider graphqlClient={firstClient}>
+        <div>Test Child</div>
+      </QuilttAuthProvider>
+    )
+
+    rerender(
+      <QuilttAuthProvider graphqlClient={secondClient}>
+        <div>Test Child</div>
+      </QuilttAuthProvider>
+    )
+
+    // A client built by the app after mount belongs to the session the app had then, so its cache is
+    // left alone rather than reset against a session this provider never rendered.
+    expect(secondClient.resetStore).not.toHaveBeenCalled()
+  })
+
+  it('builds a client with header links when headers are provided', () => {
+    // The headers memo only takes the new value when it differs from the previous one.
+    vi.mocked(isDeepEqual).mockReturnValue(false)
+
+    headersLinkCalls.length = 0
+    clientOptions.length = 0
+
+    const { getByText } = render(
+      <QuilttAuthProvider headers={{ 'X-Test': 'value' }}>
+        <div>Test Child</div>
+      </QuilttAuthProvider>
+    )
+
+    expect(getByText('Test Child')).toBeTruthy()
+
+    // Rendering is not the assertion: the provider has to build a HeadersLink carrying the headers
+    // *and* install it on the client it creates. Dropping either step would leave every request
+    // going out without the header while this test still looked green.
+    const link = headersLinkCalls[headersLinkCalls.length - 1]
+    expect(link?.options).toEqual({ headers: { 'X-Test': 'value' } })
+    expect(clientOptions[clientOptions.length - 1]?.customLinks).toEqual([link])
+
+    vi.mocked(isDeepEqual).mockReturnValue(true)
+  })
+
+  it('records nothing for a client attached after mount while storage is unread', () => {
+    mockRestored = false
+
+    const firstClient = new QuilttClient({
+      customLinks: [TerminatingLink],
+      cache: new InMemoryCache(),
+      versionLink: createVersionLink('Test'),
+    })
+    const secondClient = new QuilttClient({
+      customLinks: [TerminatingLink],
+      cache: new InMemoryCache(),
+      versionLink: createVersionLink('Test'),
+    })
+
+    const { rerender, getByText } = render(
+      <QuilttAuthProvider graphqlClient={firstClient}>
+        <div>Test Child</div>
+      </QuilttAuthProvider>
+    )
+
+    rerender(
+      <QuilttAuthProvider graphqlClient={secondClient}>
+        <div>Test Child</div>
+      </QuilttAuthProvider>
+    )
+
+    expect(getByText('Test Child')).toBeTruthy()
+    expect(secondClient.resetStore).not.toHaveBeenCalled()
+  })
+
+  it('ignores a store reset that the cancelled queries reject', async () => {
+    mockRestored = true
+    vi.mocked(isDeepEqual).mockReturnValue(false)
+
+    const client = new QuilttClient({
+      customLinks: [TerminatingLink],
+      cache: new InMemoryCache(),
+      versionLink: createVersionLink('Test'),
+    })
+    vi.mocked(client.resetStore).mockRejectedValue(new Error('cancelled by resetStore'))
+
+    const { rerender, getByText } = render(
+      <QuilttAuthProvider graphqlClient={client}>
+        <div>Test Child</div>
+      </QuilttAuthProvider>
+    )
+
+    mockSession = { updated: true }
+    rerender(
+      <QuilttAuthProvider graphqlClient={client}>
+        <div>Test Child</div>
+      </QuilttAuthProvider>
+    )
+
+    expect(client.resetStore).toHaveBeenCalled()
+    // The rejection is expected (in-flight queries are cancelled) and must not escape.
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(getByText('Test Child')).toBeTruthy()
+
     vi.mocked(isDeepEqual).mockReturnValue(true)
   })
 })

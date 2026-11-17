@@ -21,7 +21,6 @@
     "nuxt": "4.6.4"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.6",
     "@playwright/test": "1.65.1",
     "@types/node": "24.12.2",
     "typescript": "^6.0.3",

@@ -338,15 +338,23 @@ therefore also required for Flutter releases.
 | `release-js.yml` | Push to `main` |
 | `release-mobile.yml` | Push of `@quiltt/core@*` tag |
 | `release-flutter.yml` | Push of `flutter/v*` tag |
-| `ci-js.yml` | Push to `main`, pull requests |
-| `ci-android.yml` | Push/PR touching `packages/android/**` |
-| `ci-flutter.yml` | Push/PR touching `packages/flutter/**` |
-| `ci-ios.yml` | Push/PR touching `packages/ios/**` |
-| `tests-unit.yml` | Push to `main`, pull requests |
-| `tests-e2e.yml` | Push to `main`, pull requests |
+| `ci-js.yml` | Push to `main`, pull requests, manual |
+| `ci-android.yml` | Push/PR touching `packages/android/**`, manual |
+| `ci-flutter.yml` | Push/PR touching `packages/flutter/**`, manual |
+| `ci-ios.yml` | Push/PR touching `packages/ios/**` or `Package.swift`, manual |
+| `tests-unit.yml` | Push to `main`, pull requests, manual |
+| `tests-integration-core.yml` | Push/PR touching `packages/core/**`, manual |
+| `tests-integration-react.yml` | Push/PR touching `examples/react-nextjs/**`, `packages/react/**`, or `packages/core/**`, manual |
+| `tests-integration-vue.yml` | Push/PR touching `examples/vue-nuxt/**`, `packages/vue/**`, or `packages/core/**`, manual |
+| `tests-integration-capacitor.yml` | Push/PR touching `examples/capacitor-*/**`, `packages/capacitor/**`, `packages/react/**`, `packages/vue/**`, or `packages/core/**`, manual |
+| `tests-integration-react-native.yml` | Push/PR touching `examples/react-native-expo/**`, `packages/react-native/**`, or `packages/core/**`, manual |
+| `tests-integration-android.yml` | Push/PR touching `packages/android/**`, manual |
+| `tests-integration-flutter.yml` | Push/PR touching `packages/flutter/**`, manual |
+| `tests-integration-ios.yml` | Push/PR touching `packages/ios/**` or `Package.swift`, manual |
 | `snapshot.yml` | Manual (`workflow_dispatch`) |
-| `bundlewatch.yml` | Pull requests |
-| `check-todos.yml` | Push to `main`, pull requests |
+| `bundlewatch.yml` | Push to `main`, pull requests |
+| `check-deprecations.yml` | Pull requests touching `.changeset/**` or `packages/*/src/**` |
+| `check-version-drift.yml` | Pull requests touching `.changeset/config.json`, package manifests, or the drift check itself |
 
 ## Related Documentation
 

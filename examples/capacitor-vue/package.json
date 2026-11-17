@@ -29,7 +29,6 @@
     "vue": "3.5.42"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.6",
     "@capacitor/cli": "8.4.3",
     "@playwright/test": "1.65.1",
     "@types/node": "24.12.2",

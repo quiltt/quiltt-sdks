@@ -165,7 +165,7 @@ import { QuilttConnector } from '@quiltt/capacitor'
 | Method                              | Description                           |
 | ----------------------------------- | ------------------------------------- |
 | `openUrl({ url })`                  | Opens URL in system browser           |
-| `getAppLauncherUrl()`               | Returns the app launcher URL          |
+| `getAppLauncherUrl()`               | Returns the app launcher URL as a deep-link event (`{ url }`) |
 | `addListener('deepLink', callback)` | Listens for deep link callbacks       |
 | `removeAllListeners()`              | Removes all event listeners           |
 

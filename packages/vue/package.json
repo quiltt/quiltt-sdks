@@ -65,7 +65,6 @@
     "@vueuse/core": "^14.0.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.6",
     "@types/node": "24.12.2",
     "@vue/test-utils": "^2.4.11",
     "@wry/equality": "^0.5.7",

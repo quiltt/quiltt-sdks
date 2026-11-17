@@ -1,7 +1,12 @@
+import { createElement } from 'react'
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
 
 import { GlobalStorage, SESSION_STORAGE_KEY } from '@quiltt/core'
+// The renderer is used only to render without a window; its types are not installed here.
+// @ts-expect-error -- react-test-renderer ships without declarations in this workspace
+import TestRenderer from 'react-test-renderer'
 
 import { useSession } from '@/hooks/useSession'
 import { useStorage } from '@/hooks/useStorage'
@@ -785,6 +790,37 @@ describe('useSession', () => {
       renderHook(() => useSession())
 
       expect(mockAddEventListener).not.toHaveBeenCalled()
+    })
+
+    it('skips the listener entirely when there is no document', () => {
+      const mockSetStorage = vi.fn()
+      const token = createTestToken()
+
+      vi.mocked(useStorage).mockReturnValue([token, mockSetStorage, true])
+
+      // A server render has no document to listen to, and no listener to remove on cleanup.
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      vi.stubGlobal('document', undefined)
+
+      const Probe = () => {
+        useSession()
+        return null
+      }
+
+      let renderer: TestRenderer.ReactTestRenderer
+      TestRenderer.act(() => {
+        renderer = TestRenderer.create(createElement(Probe))
+      })
+
+      TestRenderer.act(() => {
+        renderer.unmount()
+      })
+
+      vi.unstubAllGlobals()
+      consoleErrorSpy.mockRestore()
+
+      expect(mockAddEventListener).not.toHaveBeenCalled()
+      expect(mockRemoveEventListener).not.toHaveBeenCalled()
     })
   })
 })

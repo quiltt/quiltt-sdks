@@ -419,6 +419,59 @@ describe('useQuilttConnector', () => {
     delete (globalThis as any).Quiltt
   })
 
+  it('detects a change to each callback position in turn', async () => {
+    const connector = {
+      open: vi.fn(),
+      onEvent: vi.fn(),
+      onOpen: vi.fn(),
+      onLoad: vi.fn(),
+      onExit: vi.fn(),
+      onExitSuccess: vi.fn(),
+      onExitAbort: vi.fn(),
+      onExitError: vi.fn(),
+    }
+
+    ;(globalThis as any).Quiltt = {
+      authenticate: vi.fn(),
+      connect: vi.fn(() => connector),
+      reconnect: vi.fn(() => connector),
+    }
+
+    const options = reactive<Record<string, unknown>>({
+      connectionId: 'conn_123',
+      onEvent: vi.fn(),
+    })
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const { unmount } = mountComposable(() => useQuilttConnector('connector_test', options))
+
+    await nextTick()
+    await nextTick()
+
+    // Each change leaves the callbacks before it untouched, so the comparison walks one position
+    // further down the chain every time.
+    for (const name of [
+      'onOpen',
+      'onLoad',
+      'onExit',
+      'onExitSuccess',
+      'onExitAbort',
+      'onExitError',
+    ]) {
+      consoleWarnSpy.mockClear()
+      options[name] = vi.fn()
+      await nextTick()
+
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Callback functions changed after initial render')
+      )
+    }
+
+    unmount()
+    consoleWarnSpy.mockRestore()
+    delete (globalThis as any).Quiltt
+  })
+
   it('skips callback change warning before connector has been created', async () => {
     // Do NOT set globalThis.Quiltt so the SDK script is not loaded
     // and the connector is never created (hasConnectorBeenCreated stays false)

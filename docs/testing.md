@@ -41,6 +41,8 @@ Native SDK integration:
 
 Integration workflows live in `.github/workflows/`:
 
+- `tests-unit.yml` (JS unit tests)
+- `tests-integration-core.yml`
 - `tests-integration-react.yml`
 - `tests-integration-vue.yml`
 - `tests-integration-capacitor.yml`
@@ -58,7 +60,15 @@ pnpm install
 pnpm run lint
 pnpm run typecheck
 pnpm run test:unit
-pnpm run test:e2e
+```
+
+Integration suites run per example or package, from that directory:
+
+```bash
+cd examples/react-nextjs && pnpm run test:e2e
+cd examples/vue-nuxt && pnpm run test:e2e
+cd examples/capacitor-react && pnpm run test:e2e
+cd examples/capacitor-vue && pnpm run test:e2e
 ```
 
 React Native example:

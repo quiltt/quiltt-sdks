@@ -462,5 +462,86 @@ describe('useQuilttInstitutions', async () => {
       // Verify signal is now aborted (cleanup ran)
       expect(capturedAbortSignal?.aborted).toBe(true)
     })
+
+    it('ignores a response that arrives after unmount', async () => {
+      let resolveSearch: (value: { status: number; data: unknown }) => void = () => {}
+      const onError = vi.fn()
+
+      mockSearchInstitutions.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveSearch = resolve
+          })
+      )
+
+      const { result, unmount } = renderHook(() =>
+        useQuilttInstitutions('mockConnectorId', onError)
+      )
+
+      act(() => {
+        result.current.setSearchTerm('test')
+      })
+
+      await waitFor(() => expect(mockSearchInstitutions).toHaveBeenCalled())
+
+      unmount()
+
+      // A late failure is the observable path. `result.current` is frozen at the last render once
+      // the hook unmounts, so asserting on it proves nothing; the error callback is what the guard
+      // has to suppress, and it would fire if the abort check were dropped.
+      await act(async () => {
+        resolveSearch({ status: 500, data: { message: 'late failure' } })
+        await Promise.resolve()
+      })
+
+      expect(onError).not.toHaveBeenCalled()
+    })
+
+    it('ignores a rejection that arrives after unmount', async () => {
+      let rejectSearch: (reason: Error) => void = () => {}
+
+      mockSearchInstitutions.mockImplementation(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectSearch = reject
+          })
+      )
+
+      const { result, unmount } = renderHook(() =>
+        useQuilttInstitutions('mockConnectorId', vi.fn())
+      )
+
+      act(() => {
+        result.current.setSearchTerm('test')
+      })
+
+      await waitFor(() => expect(mockSearchInstitutions).toHaveBeenCalled())
+
+      unmount()
+      mockConsoleError.mockClear()
+
+      await act(async () => {
+        rejectSearch(new Error('Network down'))
+        await Promise.resolve()
+      })
+
+      expect(mockConsoleError).not.toHaveBeenCalled()
+    })
+
+    it('falls back to a generic message when a rejection carries no message', async () => {
+      const onError = vi.fn()
+
+      mockSearchInstitutions.mockRejectedValue({})
+
+      const { result } = renderHook(() => useQuilttInstitutions('mockConnectorId', onError))
+
+      act(() => {
+        result.current.setSearchTerm('test')
+      })
+
+      await waitFor(() => {
+        expect(onError).toHaveBeenCalledWith('Unknown error occurred while searching institutions')
+      })
+    })
   })
 })

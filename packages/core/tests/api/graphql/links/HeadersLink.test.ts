@@ -154,6 +154,27 @@ describe('HeadersLink', () => {
       })
     })
 
+    it('should add dynamic headers when the context carries none', async () => {
+      const getHeaders = vi.fn().mockReturnValue({ 'X-Dynamic': 'dynamic-value' })
+      const link = new HeadersLink({ headers: { 'X-Static': 'static-value' }, getHeaders })
+      mockForward = createMockForward()
+
+      const result = link.request(mockOperation, mockForward)
+
+      return new Promise<void>((resolve) => {
+        result.subscribe({
+          complete: () => {
+            const contextResult = capturedContextFn!({})
+            expect(contextResult.headers).toEqual({
+              'X-Static': 'static-value',
+              'X-Dynamic': 'dynamic-value',
+            })
+            resolve()
+          },
+        })
+      })
+    })
+
     it('should handle async getHeaders', async () => {
       const getHeaders = vi.fn().mockResolvedValue({ 'X-Async': 'async-value' })
       const link = new HeadersLink({ getHeaders })

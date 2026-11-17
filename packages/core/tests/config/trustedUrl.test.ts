@@ -122,6 +122,21 @@ describe('isTrustedQuilttUrl', () => {
     })
   })
 
+  describe('authorities that do not name a host', () => {
+    it.each([
+      ['https://@', 'an authority that is only userinfo'],
+      ['https://[::1', 'an unclosed IPv6 bracket'],
+      ['https://:', 'a port with no host'],
+    ])('refuses %s because of %s', (url) => {
+      expect(isTrustedQuilttUrl(url)).toBe(false)
+    })
+
+    it('accepts a bracketed loopback address with no port', () => {
+      // The port is optional; a bracketed host keeps its colons inside the brackets.
+      expect(isTrustedQuilttUrl('http://[::1]', { allowLocalHosts: true })).toBe(true)
+    })
+  })
+
   describe('local development hosts', () => {
     describe('loopback', () => {
       it.each([

@@ -7,7 +7,10 @@ plugins {
 
 android {
     namespace = "app.quiltt.connector"
-    compileSdk = 33
+    // Compile against 34 to match the app modules and the platform preinstalled on CI runners.
+    // 33 is not on the runner image, so every build downloaded it (~60 MB) and failed outright
+    // when the download was corrupt.
+    compileSdk = 34
 
     defaultConfig {
         // Support down to Android 8.0 (API level 26)

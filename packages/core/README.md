@@ -64,7 +64,7 @@ import { endpointAuth } from '@quiltt/core/config'
 
 ### Auth (JsonWebToken)
 
-The `JsonWebToken` module provides functionality related to JSON Web Tokens (JWT). It includes methods for generating, signing, and verifying JWTs. With this module, you can easily handle authentication and secure communication in your applications.
+The `JsonWebToken` module parses JSON Web Tokens and describes their shape. `JsonWebTokenParse` decodes a token and returns it alongside its typed claims, and the module exports the `RegisteredClaims`, `PrivateClaims`, `Claims`, `JsonWebToken`, and `QuilttJWT` types used across the SDK. It does not sign or verify signatures — that stays on your server.
 
 ### Observables
 

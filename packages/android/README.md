@@ -381,7 +381,8 @@ Launches the reconnect flow for existing connections.
 data class QuilttConnectorConnectConfiguration(
     val connectorId: String,
     val appLauncherUrl: String,
-    val institution: String? = null // Optional institution filter
+    val institution: String? = null, // Optional institution filter
+    val themeMode: String? = null    // "light", "dark", or "auto"
 )
 ```
 
@@ -391,7 +392,8 @@ data class QuilttConnectorConnectConfiguration(
 data class QuilttConnectorReconnectConfiguration(
     val connectorId: String,
     val appLauncherUrl: String,
-    val connectionId: String // Required for reconnect
+    val connectionId: String,      // Required for reconnect
+    val themeMode: String? = null  // "light", "dark", or "auto"
 )
 ```
 
@@ -512,8 +514,9 @@ If using code obfuscation, add these rules to your `proguard-rules.pro`:
 ## Requirements
 
 - **Android API Level 26+** (Android 8.0)
-- **Kotlin 1.8+** or **Java 8+**
-- **Android Gradle Plugin 7.0+**
+- **Kotlin 2.0+**
+- **Android Gradle Plugin 8.x** (built and tested with 8.5.2)
+- **JDK 17+** (required by AGP 8.x)
 
 ## Releases
 
