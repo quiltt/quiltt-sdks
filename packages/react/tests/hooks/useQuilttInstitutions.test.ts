@@ -464,7 +464,8 @@ describe('useQuilttInstitutions', async () => {
     })
 
     it('ignores a response that arrives after unmount', async () => {
-      let resolveSearch: (value: { status: number; data: unknown[] }) => void = () => {}
+      let resolveSearch: (value: { status: number; data: unknown }) => void = () => {}
+      const onError = vi.fn()
 
       mockSearchInstitutions.mockImplementation(
         () =>
@@ -474,7 +475,7 @@ describe('useQuilttInstitutions', async () => {
       )
 
       const { result, unmount } = renderHook(() =>
-        useQuilttInstitutions('mockConnectorId', vi.fn())
+        useQuilttInstitutions('mockConnectorId', onError)
       )
 
       act(() => {
@@ -485,12 +486,15 @@ describe('useQuilttInstitutions', async () => {
 
       unmount()
 
+      // A late failure is the observable path. `result.current` is frozen at the last render once
+      // the hook unmounts, so asserting on it proves nothing; the error callback is what the guard
+      // has to suppress, and it would fire if the abort check were dropped.
       await act(async () => {
-        resolveSearch({ status: 200, data: [{ id: 'late' }] })
+        resolveSearch({ status: 500, data: { message: 'late failure' } })
         await Promise.resolve()
       })
 
-      expect(result.current.searchResults).toEqual([])
+      expect(onError).not.toHaveBeenCalled()
     })
 
     it('ignores a rejection that arrives after unmount', async () => {

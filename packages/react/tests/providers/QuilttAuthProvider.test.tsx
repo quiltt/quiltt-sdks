@@ -14,6 +14,11 @@ let mockSession: object | null | undefined = {}
 // Controllable "storage has been read" flag; the cache effect does nothing until it is set.
 let mockRestored: boolean | undefined
 
+// Constructor arguments captured from the mocked `@quiltt/core` classes, so a test can assert what
+// the provider actually built instead of only that it rendered.
+const headersLinkCalls = vi.hoisted(() => [] as Array<{ options?: unknown }>)
+const clientOptions = vi.hoisted(() => [] as Array<Record<string, unknown>>)
+
 // Mock the useQuilttSession hook
 vi.mock('@/hooks', () => ({
   useQuilttSession: () => ({
@@ -42,11 +47,22 @@ vi.mock('@quiltt/core', () => {
   class MockQuilttClient {
     // resetStore must return a promise since the provider chains .catch() on it
     resetStore = vi.fn(() => Promise.resolve())
+
+    constructor(options?: Record<string, unknown>) {
+      clientOptions.push(options ?? {})
+    }
   }
   class MockInMemoryCache {}
   class MockTerminatingLink {}
   class MockApolloLink {}
-  class MockHeadersLink {}
+  class MockHeadersLink {
+    constructor(options?: unknown) {
+      this.options = options
+      headersLinkCalls.push(this)
+    }
+
+    options?: unknown
+  }
 
   return {
     QuilttClient: MockQuilttClient,
@@ -280,6 +296,9 @@ describe('QuilttAuthProvider', () => {
     // The headers memo only takes the new value when it differs from the previous one.
     vi.mocked(isDeepEqual).mockReturnValue(false)
 
+    headersLinkCalls.length = 0
+    clientOptions.length = 0
+
     const { getByText } = render(
       <QuilttAuthProvider headers={{ 'X-Test': 'value' }}>
         <div>Test Child</div>
@@ -287,6 +306,13 @@ describe('QuilttAuthProvider', () => {
     )
 
     expect(getByText('Test Child')).toBeTruthy()
+
+    // Rendering is not the assertion: the provider has to build a HeadersLink carrying the headers
+    // *and* install it on the client it creates. Dropping either step would leave every request
+    // going out without the header while this test still looked green.
+    const link = headersLinkCalls[headersLinkCalls.length - 1]
+    expect(link?.options).toEqual({ headers: { 'X-Test': 'value' } })
+    expect(clientOptions[clientOptions.length - 1]?.customLinks).toEqual([link])
 
     vi.mocked(isDeepEqual).mockReturnValue(true)
   })

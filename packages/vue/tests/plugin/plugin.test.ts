@@ -374,15 +374,36 @@ describe('QuilttPlugin', () => {
     expect(provide).toHaveBeenCalledWith(QuilttSessionKey, expect.anything())
   })
 
-  it('applies configured headers to the default GraphQL client', () => {
+  it('applies configured headers to the default GraphQL client', async () => {
     const provide = vi.fn()
     const app = { provide } as any
 
     expect(() =>
-      QuilttPlugin.install?.(app, { clientId: 'cid_test', headers: { 'X-Test': 'value' } })
+      QuilttPlugin.install?.(app, {
+        clientId: 'cid_test',
+        token: createToken(),
+        headers: { 'X-Test': 'value' },
+      })
     ).not.toThrow()
 
-    expect(provide).toHaveBeenCalledWith(DefaultApolloClient, expect.anything())
+    const client = provide.mock.calls.find(
+      (call) => call[0] === DefaultApolloClient
+    )?.[1] as QuilttClient
+
+    fetchMock.mockReset()
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ data: { __typename: 'Query' } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    )
+
+    // Providing a client proves nothing about the headers; the header has to survive to the request.
+    await client.query({ query: gql`query { __typename }`, fetchPolicy: 'no-cache' })
+
+    expect(fetchMock).toHaveBeenCalled()
+    const [, requestInit] = fetchMock.mock.calls[0] as [unknown, RequestInit]
+    expect(new Headers(requestInit.headers).get('X-Test')).toBe('value')
   })
 
   it('clears already expired tokens immediately', () => {

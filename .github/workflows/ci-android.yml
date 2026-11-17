@@ -38,6 +38,17 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      # Robolectric fetches its own `android-all-instrumented` jar from Maven Central on a cold
+      # runner (the tests pin `@Config(sdk = [33])`), and a stalled fetch fails the job before any
+      # test runs. `setup-gradle` only caches ~/.gradle, so cache Robolectric's own store.
+      - name: Cache Robolectric Android jars
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: robolectric-${{ runner.os }}-${{ hashFiles('packages/android/connector/build.gradle.kts') }}
+          restore-keys: |
+            robolectric-${{ runner.os }}-
+
       # No Gemfile.lock is committed: `bundler-cache` runs `bundle lock` when one
       # is missing, so it installs and caches the newest compatible gems.
       # The Ruby version is read from .ruby-version.

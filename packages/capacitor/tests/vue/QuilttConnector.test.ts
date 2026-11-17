@@ -509,6 +509,9 @@ describe('QuilttConnector (capacitor vue)', () => {
     )
 
     vi.advanceTimersByTime(15000)
+    // The timeout writes a Vue ref; without flushing the update queue the DOM still shows the
+    // pre-timer state and this assertion would pass even if the error had been set.
+    await nextTick()
 
     expect(wrapper.text()).not.toContain('Connector took too long to load')
 
