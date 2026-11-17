@@ -22,7 +22,7 @@ subprojects {
                 "org.ow2.asm:asm-tree:9.11",
                 "org.ow2.asm:asm-util:9.11",
                 "com.google.protobuf:protobuf-java:3.25.5",
-                "org.bouncycastle:bcprov-jdk18on:1.86",
+                "org.bouncycastle:bcprov-jdk18on:1.87",
                 "io.netty:netty-buffer:4.1.138.Final",
                 "io.netty:netty-codec:4.1.138.Final",
                 "io.netty:netty-codec-http:4.1.138.Final",
