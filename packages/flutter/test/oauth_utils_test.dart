@@ -1,9 +1,66 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quiltt_connector/event.dart';
 import 'package:quiltt_connector/src/platform/oauth_utils.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  const urlLauncherChannel = MethodChannel('plugins.flutter.io/url_launcher');
+
   group('handleOAuthUrl', () {
+    final methodCalls = <MethodCall>[];
+
+    void answerLaunchWith(bool launched) {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(urlLauncherChannel, (call) async {
+            methodCalls.add(call);
+            return launched;
+          });
+    }
+
+    tearDown(() {
+      methodCalls.clear();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(urlLauncherChannel, null);
+    });
+
+    test('opens the normalized URL in an external browser', () async {
+      answerLaunchWith(true);
+
+      ConnectorSDKOnExitErrorCallback? captured;
+
+      await handleOAuthUrl(
+        'https://oauth.test.com/callback?code=abc%2520xyz',
+        'test-connector',
+        onExitError: (event) => captured = event,
+      );
+
+      expect(methodCalls, hasLength(1));
+      expect(methodCalls.single.method, equals('launch'));
+      expect(
+        (methodCalls.single.arguments as Map)['url'],
+        equals('https://oauth.test.com/callback?code=abc%20xyz'),
+      );
+      expect(captured, isNull);
+    });
+
+    test('reports a failure when the platform declines to launch', () async {
+      answerLaunchWith(false);
+
+      ConnectorSDKOnExitErrorCallback? captured;
+
+      await handleOAuthUrl(
+        'https://oauth.test.com/callback',
+        'test-connector',
+        onExitError: (event) => captured = event,
+      );
+
+      expect(methodCalls, hasLength(1));
+      expect(captured, isNotNull);
+      expect(captured!.eventMetadata.connectorId, equals('test-connector'));
+    });
+
     test(
       'reports failure instead of throwing when the URL has a malformed escape sequence',
       () async {

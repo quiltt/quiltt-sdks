@@ -110,6 +110,20 @@ describe('useQuilttResolvable', async () => {
       expect(result.current.isLoading).toBe(false)
     })
 
+    it('should return null when a 200 response carries no resolvable flag', async () => {
+      mockCheckResolvable.mockResolvedValue({ status: 200, data: null })
+
+      const { result } = renderHook(() => useQuilttResolvable('test-connector'))
+
+      let resolvableResult: boolean | null = true
+      await act(async () => {
+        resolvableResult = await result.current.checkResolvable({ plaid: 'ins_3' })
+      })
+
+      expect(resolvableResult).toBe(null)
+      expect(result.current.isResolvable).toBe(null)
+    })
+
     it('should set isLoading to true while checking', async () => {
       mockCheckResolvable.mockImplementation(
         () =>

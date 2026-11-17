@@ -134,6 +134,40 @@ describe('Core Telemetry', () => {
       expect(browserInfo).toBe('Edge/120')
     })
 
+    it('should report a version of Unknown when the browser token carries no number', () => {
+      Object.defineProperty(globalThis.navigator, 'userAgent', {
+        value: 'Mozilla/5.0 Edg/ Chrome/ Version/ Firefox/',
+        writable: true,
+        configurable: true,
+      })
+
+      expect(getBrowserInfo()).toBe('Edge/Unknown')
+
+      Object.defineProperty(globalThis.navigator, 'userAgent', {
+        value: 'Mozilla/5.0 Chrome/ Version/ Firefox/',
+        writable: true,
+        configurable: true,
+      })
+
+      expect(getBrowserInfo()).toBe('Chrome/Unknown')
+
+      Object.defineProperty(globalThis.navigator, 'userAgent', {
+        value: 'Mozilla/5.0 AppleWebKit/605.1.15 Version/ Safari/605.1.15',
+        writable: true,
+        configurable: true,
+      })
+
+      expect(getBrowserInfo()).toBe('Safari/Unknown')
+
+      Object.defineProperty(globalThis.navigator, 'userAgent', {
+        value: 'Mozilla/5.0 Gecko/20100101 Firefox/',
+        writable: true,
+        configurable: true,
+      })
+
+      expect(getBrowserInfo()).toBe('Firefox/Unknown')
+    })
+
     it('should return Unknown for unrecognized browsers', () => {
       Object.defineProperty(globalThis.navigator, 'userAgent', {
         value: 'Some Custom Browser/1.0',

@@ -258,6 +258,38 @@ describe('useIdentifySession', () => {
 
       expect(mockSetSession).not.toHaveBeenCalled()
     })
+
+    it('throws when a 201 response carries no session data', async () => {
+      mockAuth.identify.mockResolvedValue({ status: 201, data: undefined })
+
+      const { result } = renderHook(() =>
+        useIdentifySession(mockAuth as unknown as AuthAPI, mockSetSession)
+      )
+
+      await expect(
+        act(async () => {
+          await result.current({ email: 'test@example.com' }, {})
+        })
+      ).rejects.toThrow('AuthAPI.identify: Missing data on 201')
+
+      expect(mockSetSession).not.toHaveBeenCalled()
+    })
+
+    it('throws when a 422 response carries no error data', async () => {
+      mockAuth.identify.mockResolvedValue({ status: 422, data: undefined })
+
+      const { result } = renderHook(() =>
+        useIdentifySession(mockAuth as unknown as AuthAPI, mockSetSession)
+      )
+
+      await expect(
+        act(async () => {
+          await result.current({ email: 'test@example.com' }, {})
+        })
+      ).rejects.toThrow('AuthAPI.identify: Missing data on 422')
+
+      expect(mockSetSession).not.toHaveBeenCalled()
+    })
   })
 
   describe('memoization', () => {

@@ -201,4 +201,92 @@ describe('QuilttContainer', () => {
     const element = container.firstElementChild
     expect(element?.hasAttribute('quiltt-theme-mode')).toBe(false)
   })
+
+  it('warns when callback references change after the initial render', () => {
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const { rerender } = render(
+      <QuilttContainer connectorId="mockConnectorId" connectionId="conn-1" onExit={vi.fn()}>
+        Content
+      </QuilttContainer>
+    )
+
+    rerender(
+      <QuilttContainer connectorId="mockConnectorId" connectionId="conn-1" onExit={vi.fn()}>
+        Content
+      </QuilttContainer>
+    )
+
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Callback functions changed after initial render')
+    )
+
+    consoleWarnSpy.mockRestore()
+  })
+
+  it('remounts the element when the connection changes with forceRemountOnConnectionChange', () => {
+    const { container, rerender } = render(
+      <QuilttContainer
+        connectorId="mockConnectorId"
+        forceRemountOnConnectionChange
+        connectionId="conn-1"
+      >
+        Content
+      </QuilttContainer>
+    )
+
+    const first = container.firstElementChild
+
+    rerender(
+      <QuilttContainer
+        connectorId="mockConnectorId"
+        forceRemountOnConnectionChange
+        connectionId="conn-2"
+      >
+        Content
+      </QuilttContainer>
+    )
+
+    const second = container.firstElementChild
+    expect(second).not.toBe(first)
+    expect(second?.getAttribute('quiltt-connection')).toBe('conn-2')
+  })
+
+  it('reuses the element when the connection changes without forceRemountOnConnectionChange', () => {
+    const { container, rerender } = render(
+      <QuilttContainer connectorId="mockConnectorId" connectionId="conn-1">
+        Content
+      </QuilttContainer>
+    )
+
+    const first = container.firstElementChild
+
+    rerender(
+      <QuilttContainer connectorId="mockConnectorId" connectionId="conn-2">
+        Content
+      </QuilttContainer>
+    )
+
+    const second = container.firstElementChild
+    expect(second).toBe(first)
+    expect(second?.getAttribute('quiltt-connection')).toBe('conn-2')
+  })
+
+  it('keys the element on the connector alone when no connection is set', () => {
+    const { container, rerender } = render(
+      <QuilttContainer connectorId="mockConnectorId" forceRemountOnConnectionChange>
+        Content
+      </QuilttContainer>
+    )
+
+    const first = container.firstElementChild
+
+    rerender(
+      <QuilttContainer connectorId="otherConnectorId" forceRemountOnConnectionChange>
+        Content
+      </QuilttContainer>
+    )
+
+    expect(container.firstElementChild).not.toBe(first)
+  })
 })

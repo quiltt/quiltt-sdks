@@ -3,7 +3,7 @@ import { Linking, Platform } from 'react-native'
 
 import type { MockInstance } from 'vitest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, waitFor } from '@testing-library/react-native'
+import { fireEvent, render, waitFor } from '@testing-library/react-native'
 
 import { ConnectorSDKEventType } from '@quiltt/core'
 
@@ -160,6 +160,44 @@ describe('QuilttConnector', () => {
       expect(onFailure).toHaveBeenCalledWith(expect.any(Error))
     })
 
+    it('should report a non-Error rejection as an Error', async () => {
+      vi.mocked(Linking.openURL).mockRejectedValue('Cannot open')
+
+      const onFailure = vi.fn()
+      await handleOAuthUrl('https://oauth.test.com/callback', onFailure)
+
+      expect(onFailure).toHaveBeenCalledWith(expect.any(Error))
+      expect(onFailure.mock.calls[0][0].message).toBe('Cannot open')
+    })
+
+    it('should fall back to the original URL when the normalized URL cannot be opened', async () => {
+      const doubleEncodedUrl = 'https://oauth.test.com/callback?code=test%2520code'
+      vi.mocked(Linking.openURL)
+        .mockRejectedValueOnce(new Error('Cannot open normalized URL'))
+        .mockResolvedValueOnce(true)
+
+      const onFailure = vi.fn()
+      await handleOAuthUrl(doubleEncodedUrl, onFailure)
+
+      expect(Linking.openURL).toHaveBeenNthCalledWith(
+        1,
+        'https://oauth.test.com/callback?code=test%20code'
+      )
+      expect(Linking.openURL).toHaveBeenNthCalledWith(2, doubleEncodedUrl)
+      expect(onFailure).not.toHaveBeenCalled()
+    })
+
+    it('should report failure when both the normalized and original URLs fail to open', async () => {
+      const doubleEncodedUrl = 'https://oauth.test.com/callback?code=test%2520code'
+      vi.mocked(Linking.openURL).mockRejectedValue(new Error('Cannot open'))
+
+      const onFailure = vi.fn()
+      await handleOAuthUrl(doubleEncodedUrl, onFailure)
+
+      expect(Linking.openURL).toHaveBeenCalledTimes(2)
+      expect(onFailure).toHaveBeenCalledWith(expect.any(Error))
+    })
+
     it('should handle URL objects', async () => {
       const urlObject = new URL('https://oauth.test.com/callback')
       await handleOAuthUrl(urlObject)
@@ -313,6 +351,59 @@ describe('QuilttConnector', () => {
         { timeout: 1000 }
       )
     })
+
+    it('should call onExitError when the error screen exit button is pressed', async () => {
+      fetchSpy.mockRejectedValue(new Error('Network Error'))
+      const onExitError = vi.fn()
+
+      const { getByText } = render(<QuilttConnector {...defaultProps} onExitError={onExitError} />)
+
+      await waitFor(() => expect(getByText('Exit')).toBeTruthy(), { timeout: 3000 })
+
+      fireEvent.press(getByText('Exit'))
+
+      expect(onExitError).toHaveBeenCalledWith({ connectorId: 'test-connector' })
+    })
+
+    it('should not render once unmounted before the SDK agent resolves', async () => {
+      const { unmount } = render(<QuilttConnector {...defaultProps} />)
+
+      unmount()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+
+      expect(capturedWebViewProps).toBeNull()
+    })
+  })
+
+  describe('Connector URL parameters', () => {
+    it('should omit optional parameters when no theme or app launcher URL is configured', async () => {
+      const { appLauncherUrl: _appLauncherUrl, themeMode: _themeMode, ...props } = defaultProps
+      const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      render(<QuilttConnector {...props} />)
+
+      await waitFor(() => {
+        expect(capturedWebViewProps).toBeTruthy()
+      })
+
+      const url = new URL(capturedWebViewProps.source.uri)
+      expect(url.searchParams.get('mode')).toBe('webview')
+      expect(url.searchParams.has('theme_mode')).toBe(false)
+      expect(url.searchParams.has('oauth_redirect_url')).toBe(false)
+
+      consoleLogSpy.mockRestore()
+    })
+
+    it('should append an app launcher URL that needs no encoding as-is', async () => {
+      render(<QuilttConnector {...defaultProps} appLauncherUrl="com.example.app" />)
+
+      await waitFor(() => {
+        expect(capturedWebViewProps).toBeTruthy()
+      })
+
+      const url = new URL(capturedWebViewProps.source.uri)
+      expect(url.searchParams.get('oauth_redirect_url')).toBe('com.example.app')
+    })
   })
 
   describe('URL Checking', () => {
@@ -382,6 +473,50 @@ describe('QuilttConnector', () => {
       expect(result.checked).toBe(true)
       expect(result.error).toBeDefined()
       expect(mockErrorReporter.notify).toHaveBeenCalled()
+    })
+
+    it('should retry an unroutable status and report the error once retries are exhausted', async () => {
+      const mockErrorReporter = {
+        notify: vi.fn().mockResolvedValue(undefined),
+      } as any
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      fetchSpy.mockResolvedValue(createMockResponse(500, {}))
+
+      const result = await checkConnectorUrl('http://test.com', mockErrorReporter, 0)
+
+      expect(fetchSpy).toHaveBeenCalledTimes(4)
+      expect(result.checked).toBe(true)
+      expect(result.error).toContain('Connector URL is not routable.')
+      expect(mockErrorReporter.notify).toHaveBeenCalledTimes(1)
+
+      consoleErrorSpy.mockRestore()
+      consoleLogSpy.mockRestore()
+    })
+
+    it('should report a generic error when the request rejects without a value', async () => {
+      const mockErrorReporter = {
+        notify: vi.fn().mockResolvedValue(undefined),
+      } as any
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      fetchSpy.mockRejectedValue(undefined)
+
+      const result = await checkConnectorUrl('http://test.com', mockErrorReporter, 0)
+
+      expect(result).toEqual({
+        checked: true,
+        error: 'An error occurred while checking the Connector URL',
+      })
+      expect(mockErrorReporter.notify).toHaveBeenCalledWith(expect.any(Error), {
+        connectorUrl: 'http://test.com',
+        responseStatus: undefined,
+      })
+
+      consoleErrorSpy.mockRestore()
+      consoleLogSpy.mockRestore()
     })
   })
 
@@ -815,6 +950,28 @@ describe('QuilttConnector', () => {
       })
     })
 
+    it('should handle Navigate event with a double-encoded URL', async () => {
+      fetchSpy.mockResolvedValue(createMockResponse(200, { ok: true }))
+
+      render(<QuilttConnector {...defaultProps} />)
+
+      await waitFor(() => {
+        expect(capturedWebViewProps).toBeTruthy()
+      })
+
+      const requestHandler = capturedWebViewProps.onShouldStartLoadWithRequest
+
+      const result = requestHandler({
+        url: 'quilttconnector://Navigate?url=https%253A%252F%252Foauth.example.com%252Fcallback',
+      })
+
+      expect(result).toBe(false)
+
+      await waitFor(() => {
+        expect(Linking.openURL).toHaveBeenCalledWith('https://oauth.example.com/callback')
+      })
+    })
+
     it('should handle Navigate event with non-encoded URL', async () => {
       fetchSpy.mockResolvedValue(createMockResponse(200, { ok: true }))
 
@@ -835,6 +992,109 @@ describe('QuilttConnector', () => {
       await waitFor(() => {
         expect(Linking.openURL).toHaveBeenCalled()
       })
+    })
+
+    it('should exit with an error when Navigate arrives without an app launcher URL', async () => {
+      fetchSpy.mockResolvedValue(createMockResponse(200, { ok: true }))
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const onExitError = vi.fn()
+      const onExit = vi.fn()
+      const onEvent = vi.fn()
+      const { appLauncherUrl: _appLauncherUrl, ...props } = defaultProps
+
+      render(
+        <QuilttConnector {...props} onExitError={onExitError} onExit={onExit} onEvent={onEvent} />
+      )
+
+      await waitFor(() => {
+        expect(capturedWebViewProps).toBeTruthy()
+      })
+
+      const requestHandler = capturedWebViewProps.onShouldStartLoadWithRequest
+
+      const result = requestHandler({
+        url: 'quilttconnector://Navigate?url=https%3A%2F%2Foauth.example.com%2Fcallback',
+      })
+
+      expect(result).toBe(false)
+      expect(Linking.openURL).not.toHaveBeenCalled()
+
+      await waitFor(() => {
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+          'OAuth redirect requires `appLauncherUrl` to be configured.'
+        )
+        expect(onExitError).toHaveBeenCalledWith({ connectorId: 'test-connector' })
+        expect(onExit).toHaveBeenCalledWith(ConnectorSDKEventType.ExitError, {
+          connectorId: 'test-connector',
+        })
+        expect(onEvent).toHaveBeenCalledWith(ConnectorSDKEventType.ExitError, {
+          connectorId: 'test-connector',
+        })
+      })
+
+      consoleErrorSpy.mockRestore()
+    })
+
+    it('should report an exit error when a Navigate URL cannot be decoded or opened', async () => {
+      fetchSpy.mockResolvedValue(createMockResponse(200, { ok: true }))
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      vi.mocked(Linking.openURL).mockRejectedValue(new Error('Cannot open'))
+
+      const onExitError = vi.fn()
+      const onExit = vi.fn()
+      const onEvent = vi.fn()
+
+      render(
+        <QuilttConnector
+          {...defaultProps}
+          onExitError={onExitError}
+          onExit={onExit}
+          onEvent={onEvent}
+        />
+      )
+
+      await waitFor(() => {
+        expect(capturedWebViewProps).toBeTruthy()
+      })
+
+      const requestHandler = capturedWebViewProps.onShouldStartLoadWithRequest
+
+      const result = requestHandler({
+        url: 'quilttconnector://Navigate?url=%25E0%25A4%25A',
+      })
+
+      expect(result).toBe(false)
+
+      await waitFor(() => {
+        expect(consoleErrorSpy).toHaveBeenCalledWith('Navigate URL decoding failed, using original')
+        expect(onExitError).toHaveBeenCalledWith({ connectorId: 'test-connector' })
+        expect(onExit).toHaveBeenCalledWith(ConnectorSDKEventType.ExitError, {
+          connectorId: 'test-connector',
+        })
+        expect(onEvent).toHaveBeenCalledWith(ConnectorSDKEventType.ExitError, {
+          connectorId: 'test-connector',
+        })
+      })
+
+      consoleErrorSpy.mockRestore()
+    })
+
+    it('should let URLs that are not connector events load in the WebView', async () => {
+      fetchSpy.mockResolvedValue(createMockResponse(200, { ok: true }))
+
+      render(<QuilttConnector {...defaultProps} />)
+
+      await waitFor(() => {
+        expect(capturedWebViewProps).toBeTruthy()
+      })
+
+      const result = capturedWebViewProps.onShouldStartLoadWithRequest({
+        url: 'https://example.com/page',
+      })
+
+      expect(result).toBe(true)
+      expect(Linking.openURL).not.toHaveBeenCalled()
     })
 
     it('should handle Navigate event with missing URL parameter', async () => {

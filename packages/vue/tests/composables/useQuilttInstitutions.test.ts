@@ -139,6 +139,137 @@ describe('useQuilttInstitutions', () => {
     unmount()
   })
 
+  it('does not search while there is no session', async () => {
+    vi.useFakeTimers()
+
+    sessionRef.value = null
+
+    const { result, unmount } = mountComposable(() => useQuilttInstitutions('connector_test'))
+
+    result.setSearchTerm('de')
+    await vi.advanceTimersByTimeAsync(350)
+    await nextTick()
+
+    expect(mocks.searchInstitutionsMock).not.toHaveBeenCalled()
+
+    sessionRef.value = { token: 'session_token' }
+    unmount()
+  })
+
+  it('falls back to a generic message for failures without one', async () => {
+    vi.useFakeTimers()
+    const onError = vi.fn()
+
+    mocks.searchInstitutionsMock.mockResolvedValueOnce({ status: 500, data: null } as any)
+
+    const { result, unmount } = mountComposable(() =>
+      useQuilttInstitutions('connector_test', onError)
+    )
+
+    result.setSearchTerm('de')
+    await vi.advanceTimersByTimeAsync(350)
+    await nextTick()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(onError).toHaveBeenCalledWith('Failed to fetch institutions')
+
+    mocks.searchInstitutionsMock.mockRejectedValueOnce({})
+
+    result.setSearchTerm('bank')
+    await vi.advanceTimersByTimeAsync(350)
+    await nextTick()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(onError).toHaveBeenCalledWith('Unknown error occurred while searching institutions')
+
+    unmount()
+  })
+
+  it('ignores a response that a newer search superseded', async () => {
+    vi.useFakeTimers()
+    const onError = vi.fn()
+
+    let resolveFirst: (value: unknown) => void = () => {}
+    mocks.searchInstitutionsMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFirst = resolve
+        })
+    )
+
+    const { result, unmount } = mountComposable(() =>
+      useQuilttInstitutions('connector_test', onError)
+    )
+
+    result.setSearchTerm('de')
+    await vi.advanceTimersByTimeAsync(350)
+    await nextTick()
+
+    mocks.searchInstitutionsMock.mockResolvedValueOnce({
+      status: 200,
+      data: [{ id: 'second' }],
+    } as any)
+
+    result.setSearchTerm('bank')
+    await vi.advanceTimersByTimeAsync(350)
+    await nextTick()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    resolveFirst({ status: 200, data: [{ id: 'stale' }] })
+    await nextTick()
+    await Promise.resolve()
+
+    expect(result.searchResults.value).toEqual([{ id: 'second' }])
+    expect(onError).not.toHaveBeenCalled()
+
+    unmount()
+  })
+
+  it('ignores a rejection that a newer search superseded', async () => {
+    vi.useFakeTimers()
+    const onError = vi.fn()
+
+    let rejectFirst: (reason: unknown) => void = () => {}
+    mocks.searchInstitutionsMock.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectFirst = reject
+        })
+    )
+
+    const { result, unmount } = mountComposable(() =>
+      useQuilttInstitutions('connector_test', onError)
+    )
+
+    result.setSearchTerm('de')
+    await vi.advanceTimersByTimeAsync(350)
+    await nextTick()
+
+    mocks.searchInstitutionsMock.mockResolvedValueOnce({
+      status: 200,
+      data: [{ id: 'second' }],
+    } as any)
+
+    result.setSearchTerm('bank')
+    await vi.advanceTimersByTimeAsync(350)
+    await nextTick()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    rejectFirst(new Error('late failure'))
+    await nextTick()
+    await Promise.resolve()
+
+    expect(onError).not.toHaveBeenCalled()
+    expect(result.searchResults.value).toEqual([{ id: 'second' }])
+    expect(result.isSearching.value).toBe(false)
+
+    unmount()
+  })
+
   it('treats a 200 response with null data as an error, not empty results', async () => {
     vi.useFakeTimers()
     const onError = vi.fn()

@@ -1551,4 +1551,53 @@ describe('ActionCableLink', () => {
     expect(GlobalStorage.set).not.toHaveBeenCalled()
     expect(createConsumer).toHaveBeenCalled()
   })
+
+  it('should ignore socket activity that arrives after teardown', () => {
+    let handlers: {
+      connected: () => void
+      received: (payload: { result: unknown; more: boolean }) => void
+    }
+    const mockSubscription = {
+      perform: vi.fn(),
+      unsubscribe: vi.fn(),
+    }
+
+    const mockConsumer = {
+      subscriptions: {
+        create: vi.fn((_config, createdHandlers) => {
+          handlers = createdHandlers
+          return mockSubscription
+        }),
+      },
+    }
+
+    vi.mocked(createConsumer).mockReturnValue(mockConsumer as any)
+
+    const link = new ActionCableLink({})
+    const operation = {
+      query: gql`
+        query TestQuery {
+          mockField
+        }
+      `,
+      variables: {},
+      operationName: 'TestQuery',
+      extensions: {},
+      setContext: () => {},
+      getContext: () => ({}),
+    } as unknown as ApolloLink.Operation
+
+    const observable = link.request(operation, () => new Observable<ApolloLink.Result>(() => {}))
+
+    const subscription = observable?.subscribe({})
+    subscription?.unsubscribe()
+
+    // A socket that connects late, or delivers a result after the subscriber went away, must not
+    // perform actions or emit into a closed observer.
+    handlers!.connected()
+    handlers!.received({ result: { data: { late: true } }, more: false })
+
+    expect(mockSubscription.perform).not.toHaveBeenCalled()
+    expect(mockSubscription.unsubscribe).toHaveBeenCalled()
+  })
 })

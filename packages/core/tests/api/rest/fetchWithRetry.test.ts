@@ -134,6 +134,19 @@ describe('fetchWithRetry', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
+  it('uses the default retry budget when the caller sets none', async () => {
+    fetchMock.mockResolvedValue(createResponse({ status: 503, statusText: 'Service Unavailable' }))
+
+    const { fetchWithRetry } = await import('@/api/rest/fetchWithRetry')
+    const promise = fetchWithRetry('/test', { retry: true })
+    const rejection = expect(promise).rejects.toThrow('HTTP error with status 503')
+
+    await vi.runAllTimersAsync()
+    await rejection
+    // One initial attempt plus the default budget of 10 retries.
+    expect(fetchMock).toHaveBeenCalledTimes(11)
+  })
+
   it('does not apply the 429 cap to server errors', async () => {
     fetchMock.mockResolvedValue(createResponse({ status: 503, statusText: 'Service Unavailable' }))
 

@@ -30,6 +30,14 @@ const otherQuery = gql`
   }
 `
 
+const anonymousQuery = gql`
+  {
+    me {
+      id
+    }
+  }
+`
+
 const createClient = (token: string) =>
   new QuilttClient({
     cache: new InMemoryCache(),
@@ -120,5 +128,18 @@ describe('batch isolation', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(authorizationsOf(fetchMock.mock.calls)).toEqual(['Bearer token-a', 'Bearer token-b'])
+  })
+
+  it('batches an operation that carries no name', async () => {
+    const client = createClient('token-a')
+
+    await Promise.all([
+      client.query({ query: anonymousQuery, fetchPolicy: 'no-cache' }),
+      client.query({ query: otherQuery, fetchPolicy: 'no-cache' }),
+    ])
+
+    // An unnamed operation is not a close, so it shares the default class.
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(authorizationsOf(fetchMock.mock.calls)).toEqual(['Bearer token-a'])
   })
 })

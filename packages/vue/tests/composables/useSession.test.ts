@@ -2,6 +2,8 @@ import { createApp, nextTick } from 'vue'
 
 import { describe, expect, it, vi } from 'vitest'
 
+import { GlobalStorage, SESSION_STORAGE_KEY } from '@quiltt/core'
+
 import { useSession } from '@/composables/useSession'
 
 const createToken = (expOffsetSeconds = 3600) => {
@@ -59,6 +61,19 @@ const mountComposable = <T>(factory: () => T) => {
 }
 
 describe('useSession', () => {
+  it('defaults to the shared session slot', async () => {
+    const { result, unmount } = mountComposable(() => useSession())
+    const token = createToken()
+
+    result.setSession(token)
+    await nextTick()
+
+    expect(result.session.value?.token).toBe(token)
+    expect(GlobalStorage.get(SESSION_STORAGE_KEY)).toBe(token)
+
+    unmount()
+  })
+
   it('sets and clears parsed session from JWT token', async () => {
     const { result, unmount } = mountComposable(() => useSession('session:test'))
     const token = createToken()

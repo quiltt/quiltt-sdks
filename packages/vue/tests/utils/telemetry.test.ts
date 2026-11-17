@@ -26,6 +26,18 @@ describe('vue telemetry utils', () => {
     expect(getCapacitorInfo()).toBeNull()
   })
 
+  it('returns null when Capacitor is not present', () => {
+    delete window.Capacitor
+
+    expect(getCapacitorInfo()).toBeNull()
+  })
+
+  it('returns null when Capacitor exposes no native check', () => {
+    window.Capacitor = {} as unknown as Window['Capacitor']
+
+    expect(getCapacitorInfo()).toBeNull()
+  })
+
   it('maps known Capacitor platforms with correct capitalization', () => {
     window.Capacitor = {
       isNativePlatform: () => true,

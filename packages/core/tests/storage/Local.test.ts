@@ -110,6 +110,17 @@ describe('LocalStorage', () => {
       global.window = originalWindow
     })
 
+    it('should report a key as absent when there is no storage to read', () => {
+      const originalWindow = global.window
+      // @ts-expect-error
+      delete global.window
+
+      const serverLs = new LocalStorage()
+      expect(serverLs.has('testKey')).toBe(false)
+
+      global.window = originalWindow
+    })
+
     it('should handle undefined window in remove method', () => {
       const originalWindow = global.window
       // @ts-expect-error

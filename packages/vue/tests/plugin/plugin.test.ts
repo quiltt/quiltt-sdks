@@ -1,8 +1,17 @@
 import { nextTick } from 'vue'
 
+// `@quiltt/core` takes the `fetch` it finds on the global when its HTTP links load, so a request has
+// to be replaced before that happens — during import, not inside a test.
+const fetchMock = vi.hoisted(() => {
+  const mock = vi.fn()
+  ;(globalThis as unknown as { fetch: unknown }).fetch = mock
+  return mock
+})
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { GlobalStorage } from '@quiltt/core'
+import { GlobalStorage, gql, type QuilttClient } from '@quiltt/core'
+import { DefaultApolloClient } from '@vue/apollo-composable'
 
 import {
   QuilttClientIdKey,
@@ -247,6 +256,133 @@ describe('QuilttPlugin', () => {
     expect(storedSession()).toBeNull()
 
     vi.useRealTimers()
+  })
+
+  it('mirrors a clear when the stored session is gone before it expires', async () => {
+    vi.useFakeTimers()
+
+    const provide = vi.fn()
+    const app = { provide } as any
+
+    QuilttPlugin.install?.(app, { clientId: 'cid_test' })
+
+    const setSessionCall = provide.mock.calls.find((call) => call[0] === QuilttSetSessionKey)
+    const sessionCall = provide.mock.calls.find((call) => call[0] === QuilttSessionKey)
+
+    const setSession = setSessionCall?.[1] as (token: string | null) => void
+    const sessionRef = sessionCall?.[1] as { value: any }
+
+    setSession(createToken(1))
+    // Let the session watcher run so the expiry timer is scheduled.
+    await nextTick()
+
+    // Another tab signed out while this one was paused, so the stored slot no longer holds the
+    // session this timer belongs to, and the store reports nothing at all.
+    vi.spyOn(GlobalStorage, 'get').mockReturnValue(undefined)
+
+    await vi.advanceTimersByTimeAsync(1100)
+
+    expect(sessionRef.value).toBeNull()
+
+    vi.useRealTimers()
+  })
+
+  it('gives the default GraphQL client a session source when rendering on a server', async () => {
+    const originalWindow = globalThis.window
+    Object.defineProperty(globalThis, 'window', { value: undefined, configurable: true })
+
+    const provide = vi.fn()
+    const app = { provide } as any
+
+    expect(() => QuilttPlugin.install?.(app, { clientId: 'cid_test' })).not.toThrow()
+
+    Object.defineProperty(globalThis, 'window', {
+      value: originalWindow,
+      configurable: true,
+    })
+
+    const clientCall = provide.mock.calls.find((call) => call[0] === DefaultApolloClient)
+    const client = clientCall?.[1] as QuilttClient
+    expect(client).toBeTruthy()
+
+    // A request made through the client reads the session of the request being rendered. Nothing has
+    // signed in here, so the read reports no token and the request is refused rather than sent
+    // unauthenticated.
+    fetchMock.mockClear()
+
+    await expect(
+      client.query({ query: gql`query { __typename }`, fetchPolicy: 'no-cache' })
+    ).rejects.toThrow('No session token available')
+
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('clears the request session when the API rejects its token', async () => {
+    const originalWindow = globalThis.window
+    Object.defineProperty(globalThis, 'window', { value: undefined, configurable: true })
+
+    const provide = vi.fn()
+    QuilttPlugin.install?.({ provide } as any, { clientId: 'cid_test', token: createToken() })
+
+    Object.defineProperty(globalThis, 'window', { value: originalWindow, configurable: true })
+
+    const client = provide.mock.calls.find(
+      (call) => call[0] === DefaultApolloClient
+    )?.[1] as QuilttClient
+    const sessionRef = provide.mock.calls.find((call) => call[0] === QuilttSessionKey)?.[1] as {
+      value: any
+    }
+
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ errors: [{ message: 'unauthorized' }] }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    )
+
+    await expect(
+      client.query({ query: gql`query { __typename }`, fetchPolicy: 'no-cache' })
+    ).rejects.toThrow()
+
+    expect(fetchMock).toHaveBeenCalled()
+    expect(sessionRef.value).toBeNull()
+
+    fetchMock.mockReset()
+  })
+
+  it('ignores a store reset that the cancelled queries reject', async () => {
+    const provide = vi.fn()
+    const app = { provide } as any
+
+    QuilttPlugin.install?.(app, { clientId: 'cid_test' })
+
+    const clientCall = provide.mock.calls.find((call) => call[0] === DefaultApolloClient)
+    const client = clientCall?.[1] as QuilttClient
+    const resetStoreSpy = vi
+      .spyOn(client, 'resetStore')
+      .mockRejectedValue(new Error('cancelled by resetStore'))
+
+    const setSessionCall = provide.mock.calls.find((call) => call[0] === QuilttSetSessionKey)
+    const setSession = setSessionCall?.[1] as (token: string | null) => void
+
+    setSession(createToken())
+    await nextTick()
+    expect(resetStoreSpy).toHaveBeenCalled()
+
+    // The rejection is expected (in-flight queries are cancelled) and must not escape.
+    await nextTick()
+    expect(provide).toHaveBeenCalledWith(QuilttSessionKey, expect.anything())
+  })
+
+  it('applies configured headers to the default GraphQL client', () => {
+    const provide = vi.fn()
+    const app = { provide } as any
+
+    expect(() =>
+      QuilttPlugin.install?.(app, { clientId: 'cid_test', headers: { 'X-Test': 'value' } })
+    ).not.toThrow()
+
+    expect(provide).toHaveBeenCalledWith(DefaultApolloClient, expect.anything())
   })
 
   it('clears already expired tokens immediately', () => {

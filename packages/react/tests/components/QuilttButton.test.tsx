@@ -1,3 +1,5 @@
+import type { MouseEvent } from 'react'
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render } from '@testing-library/react'
 
@@ -141,5 +143,110 @@ describe('QuilttButton', () => {
 
     const button = container.querySelector('button')
     expect(button?.hasAttribute('quiltt-theme-mode')).toBe(false)
+  })
+
+  it('does not open the connector when onClick prevents the default action', () => {
+    const onClick = vi.fn((event: MouseEvent<HTMLElement>) => {
+      event.preventDefault()
+    })
+
+    const { getByRole } = render(
+      <QuilttButton connectorId="mockConnectorId" onClick={onClick}>
+        Test Button
+      </QuilttButton>
+    )
+
+    fireEvent.click(getByRole('button'))
+
+    expect(onClick).toHaveBeenCalled()
+    expect(mockOpen).not.toHaveBeenCalled()
+  })
+
+  it('warns when callback references change after the initial render', () => {
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const { rerender } = render(
+      <QuilttButton connectorId="mockConnectorId" connectionId="conn-1" onExit={vi.fn()}>
+        Test Button
+      </QuilttButton>
+    )
+
+    rerender(
+      <QuilttButton connectorId="mockConnectorId" connectionId="conn-1" onExit={vi.fn()}>
+        Test Button
+      </QuilttButton>
+    )
+
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Callback functions changed after initial render')
+    )
+
+    consoleWarnSpy.mockRestore()
+  })
+
+  it('remounts the element when the connection changes with forceRemountOnConnectionChange', () => {
+    const { container, rerender } = render(
+      <QuilttButton
+        connectorId="mockConnectorId"
+        forceRemountOnConnectionChange
+        connectionId="conn-1"
+      >
+        Test Button
+      </QuilttButton>
+    )
+
+    const first = container.querySelector('button')
+
+    rerender(
+      <QuilttButton
+        connectorId="mockConnectorId"
+        forceRemountOnConnectionChange
+        connectionId="conn-2"
+      >
+        Test Button
+      </QuilttButton>
+    )
+
+    const second = container.querySelector('button')
+    expect(second).not.toBe(first)
+    expect(second?.getAttribute('quiltt-connection')).toBe('conn-2')
+  })
+
+  it('reuses the element when the connection changes without forceRemountOnConnectionChange', () => {
+    const { container, rerender } = render(
+      <QuilttButton connectorId="mockConnectorId" connectionId="conn-1">
+        Test Button
+      </QuilttButton>
+    )
+
+    const first = container.querySelector('button')
+
+    rerender(
+      <QuilttButton connectorId="mockConnectorId" connectionId="conn-2">
+        Test Button
+      </QuilttButton>
+    )
+
+    const second = container.querySelector('button')
+    expect(second).toBe(first)
+    expect(second?.getAttribute('quiltt-connection')).toBe('conn-2')
+  })
+
+  it('keys the element on the connector alone when no connection is set', () => {
+    const { container, rerender } = render(
+      <QuilttButton connectorId="mockConnectorId" forceRemountOnConnectionChange>
+        Test Button
+      </QuilttButton>
+    )
+
+    const first = container.querySelector('button')
+
+    rerender(
+      <QuilttButton connectorId="otherConnectorId" forceRemountOnConnectionChange>
+        Test Button
+      </QuilttButton>
+    )
+
+    expect(container.querySelector('button')).not.toBe(first)
   })
 })

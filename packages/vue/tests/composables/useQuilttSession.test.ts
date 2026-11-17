@@ -551,6 +551,44 @@ describe('useQuilttSession', () => {
     unmount()
   })
 
+  it('throws when identify or authenticate resolves without session or error data', async () => {
+    const sessionRef = ref({ token: 'session_token' } as any)
+    const setSession = vi.fn()
+
+    const { result, unmount } = mountComposable(
+      () => useQuilttSession(),
+      [
+        [QuilttSessionKey as unknown as symbol, sessionRef],
+        [QuilttSetSessionKey as unknown as symbol, setSession],
+        [QuilttClientIdKey as unknown as symbol, ref('cid_test')],
+      ]
+    )
+
+    mocks.identifyMock.mockResolvedValueOnce({ status: 201 } as any)
+    await expect(result.identifySession({ email: 'test@example.com' } as any, {})).rejects.toThrow(
+      'AuthAPI.identify: Missing data on 201'
+    )
+
+    mocks.identifyMock.mockResolvedValueOnce({ status: 422 } as any)
+    await expect(result.identifySession({ email: 'test@example.com' } as any, {})).rejects.toThrow(
+      'AuthAPI.identify: Missing data on 422'
+    )
+
+    mocks.authenticateMock.mockResolvedValueOnce({ status: 201 } as any)
+    await expect(result.authenticateSession({ passcode: '123456' } as any, {})).rejects.toThrow(
+      'AuthAPI.authenticate: Missing data on 201'
+    )
+
+    mocks.authenticateMock.mockResolvedValueOnce({ status: 422 } as any)
+    await expect(result.authenticateSession({ passcode: '123456' } as any, {})).rejects.toThrow(
+      'AuthAPI.authenticate: Missing data on 422'
+    )
+
+    expect(setSession).not.toHaveBeenCalled()
+
+    unmount()
+  })
+
   it('does not clear a session that signed in while the revoke was in flight', async () => {
     const sessionRef = ref({ token: 'header.revoked.signature' } as any)
     const setSession = vi.fn()

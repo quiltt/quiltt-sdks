@@ -1,7 +1,7 @@
 import { createRef } from 'react'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 
 const pluginMocks = vi.hoisted(() => ({
   openUrl: vi.fn(),
@@ -136,6 +136,34 @@ describe('QuilttConnector (capacitor)', () => {
       expect(fetch).not.toHaveBeenCalled()
     }
   )
+
+  it('keeps an app launcher URL it cannot decode unchanged', () => {
+    primePluginMocks()
+
+    const { container } = render(
+      <QuilttConnector connectorId="connector_test" appLauncherUrl="myapp://callback/%ZZ" />
+    )
+
+    const iframe = container.querySelector('iframe') as HTMLIFrameElement | null
+    expect(iframe).toBeTruthy()
+    expect(iframe?.getAttribute('src')).toContain('app_launcher_url=myapp%3A%2F%2Fcallback%2F%25ZZ')
+  })
+
+  it('omits the token from the iframe src when there is no session', () => {
+    primePluginMocks()
+    const savedSession = sessionMocks.session
+
+    try {
+      sessionMocks.session = null
+
+      const { container } = render(<QuilttConnector connectorId="connector_test" />)
+
+      const src = container.querySelector('iframe')?.getAttribute('src') || ''
+      expect(src).not.toContain('token=')
+    } finally {
+      sessionMocks.session = savedSession
+    }
+  })
 
   it('opens system browser on navigate events from trusted origin', () => {
     primePluginMocks()
@@ -305,6 +333,47 @@ describe('QuilttConnector (capacitor)', () => {
     expect(pluginMocks.openUrl).not.toHaveBeenCalled()
   })
 
+  it('treats a message with no payload as malformed', () => {
+    primePluginMocks()
+
+    const onEvent = vi.fn()
+    render(<QuilttConnector connectorId="connector_test" onEvent={onEvent} />)
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        origin: 'https://connector_test.quiltt.app',
+        // A MessageBus message always carries an object; anything else is not one.
+        data: null,
+      })
+    )
+
+    expect(onEvent).not.toHaveBeenCalled()
+  })
+
+  it('ignores a deep link that carries no url', async () => {
+    let deepLinkListener: ((event: { url?: string }) => void) | undefined
+
+    pluginMocks.addListener.mockImplementation((_event, listener) => {
+      deepLinkListener = listener
+      return Promise.resolve({ remove: vi.fn() })
+    })
+    pluginMocks.getAppLauncherUrl.mockResolvedValue({ url: null })
+
+    const { container } = render(<QuilttConnector connectorId="connector_test" />)
+
+    await waitFor(() => expect(deepLinkListener).toBeDefined())
+
+    const iframe = container.querySelector('iframe') as HTMLIFrameElement
+    const postMessageSpy = vi.fn()
+    Object.defineProperty(iframe, 'contentWindow', {
+      value: { postMessage: postMessageSpy },
+      configurable: true,
+    })
+
+    expect(() => deepLinkListener?.({})).not.toThrow()
+    expect(postMessageSpy).not.toHaveBeenCalled()
+  })
+
   it('sends OAuth callbacks to the iframe, parses params, and exposes a handle', async () => {
     let deepLinkListener: ((event: { url: string }) => void) | undefined
 
@@ -444,5 +513,22 @@ describe('QuilttConnector (capacitor)', () => {
 
     const src = iframe?.getAttribute('src') || ''
     expect(src).toContain('theme_mode=dark')
+  })
+
+  it('shows an error when the connector does not load in time', () => {
+    primePluginMocks()
+    vi.useFakeTimers()
+
+    try {
+      render(<QuilttConnector connectorId="connector_test" />)
+
+      act(() => {
+        vi.advanceTimersByTime(15000)
+      })
+
+      expect(screen.getByText('Connector took too long to load. Please retry.')).toBeTruthy()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

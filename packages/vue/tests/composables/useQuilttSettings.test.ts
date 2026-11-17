@@ -3,7 +3,7 @@ import { createApp, ref } from 'vue'
 import { describe, expect, it } from 'vitest'
 
 import { useQuilttSettings } from '@/composables/useQuilttSettings'
-import { QuilttClientIdKey } from '@/plugin/keys'
+import { QuilttClientIdKey, QuilttHeadersKey } from '@/plugin/keys'
 
 const mountComposable = <T>(factory: () => T, provide?: Array<[symbol, unknown]>) => {
   let result!: T
@@ -48,6 +48,25 @@ describe('useQuilttSettings', () => {
     const { result, unmount } = mountComposable(() => useQuilttSettings())
 
     expect(result.clientId.value).toBeUndefined()
+
+    unmount()
+  })
+
+  it('reads headers from injected plugin state', () => {
+    const { result, unmount } = mountComposable(
+      () => useQuilttSettings(),
+      [[QuilttHeadersKey as unknown as symbol, ref({ 'X-Test': 'value' })]]
+    )
+
+    expect(result.headers.value).toEqual({ 'X-Test': 'value' })
+
+    unmount()
+  })
+
+  it('returns undefined headers when plugin state is unavailable', () => {
+    const { result, unmount } = mountComposable(() => useQuilttSettings())
+
+    expect(result.headers.value).toBeUndefined()
 
     unmount()
   })

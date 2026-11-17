@@ -146,6 +146,56 @@ describe('QuilttContainer', () => {
     app.unmount()
   })
 
+  it('exposes appLauncherUrl as a reactive getter', () => {
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+
+    const app = createApp({
+      render: () =>
+        h(QuilttContainer, {
+          connectorId: 'connector_test',
+          appLauncherUrl: 'myapp://oauth',
+        }),
+    })
+
+    app.mount(root)
+
+    const [, options] = mocks.useQuilttConnectorMock.mock.calls[0] as [
+      () => string,
+      Record<string, unknown>,
+    ]
+
+    expect((options.appLauncherUrl as () => string | undefined)()).toBe('myapp://oauth')
+
+    app.unmount()
+  })
+
+  it('keys on the connector alone when forceRemountOnConnectionChange has no connection', async () => {
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+
+    const connectorIdRef = ref('connector_first')
+
+    const app = createApp({
+      render: () =>
+        h(QuilttContainer, {
+          connectorId: connectorIdRef.value,
+          forceRemountOnConnectionChange: true,
+        }),
+    })
+
+    app.mount(root)
+
+    const initialElement = root.querySelector('.quiltt-container')
+
+    connectorIdRef.value = 'connector_second'
+    await nextTick()
+
+    expect(root.querySelector('.quiltt-container')).not.toBe(initialElement)
+
+    app.unmount()
+  })
+
   it('passes themeMode to useQuilttConnector', () => {
     const root = document.createElement('div')
     document.body.appendChild(root)

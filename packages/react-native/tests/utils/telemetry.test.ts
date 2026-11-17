@@ -102,6 +102,13 @@ describe('React Native Telemetry', () => {
       expect(osInfo).toBe('Android/33')
     })
 
+    it('should report an unknown platform name for an OS it does not map', () => {
+      vi.spyOn(Platform, 'OS', 'get').mockReturnValue('windows' as never)
+      vi.spyOn(Platform, 'Version', 'get').mockReturnValue('11')
+
+      expect(getOSInfo()).toBe('Unknown/11')
+    })
+
     it('should handle errors gracefully', () => {
       vi.spyOn(Platform, 'OS', 'get').mockImplementation(() => {
         throw new Error('Mock error')

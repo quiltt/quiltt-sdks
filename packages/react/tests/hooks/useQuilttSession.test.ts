@@ -118,6 +118,25 @@ describe('useQuilttSession', () => {
     expect(mockSetSession).toHaveBeenCalledWith(null)
   })
 
+  it('leaves the session alone when a different token is forgotten', async () => {
+    const mockSetSession = stubSetSession()
+
+    vi.mocked(useSession).mockReturnValue([
+      { token: 'current.token', claims: { exp: 0 } } as QuilttJWT,
+      mockSetSession,
+      stubController(mockSetSession),
+      true,
+    ])
+
+    const { result } = renderHook(() => useQuilttSession())
+
+    await act(async () => {
+      await result.current.forgetSession('another.token')
+    })
+
+    expect(mockSetSession).not.toHaveBeenCalled()
+  })
+
   it('memoizes AuthAPI instance when clientId does not change', () => {
     const mockSetSession = stubSetSession()
     const mockSession: QuilttJWT | undefined = undefined

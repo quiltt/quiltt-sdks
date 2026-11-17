@@ -945,4 +945,63 @@ describe('useImportSession', () => {
       expect(GlobalStorage.get(SESSION_STORAGE_KEY)).toBe(freshToken)
     })
   })
+
+  describe('with a setter this hook cannot read back', () => {
+    it('tells the setter to clear when the token is rejected', async () => {
+      const testJWT = createTestJWT({ token: 'unreadable.setter.inactive.jwt.token' })
+
+      vi.mocked(JsonWebTokenParse).mockReturnValue(testJWT)
+      mockAuth.ping.mockResolvedValue({ status: 401, data: {} })
+
+      const plainSetSession = vi.fn()
+      const { result } = renderHook(() =>
+        useImportSession(
+          mockAuth as unknown as AuthAPI,
+          undefined,
+          plainSetSession as unknown as SetSession
+        )
+      )
+
+      const imported = await act(async () => {
+        return await result.current(testJWT.token)
+      })
+
+      expect(imported).toBe(false)
+      expect(plainSetSession).toHaveBeenCalledWith(null)
+    })
+  })
+
+  describe('rejected token latch', () => {
+    it('caps the latch and drops the oldest rejected token once it is full', async () => {
+      vi.mocked(JsonWebTokenParse).mockImplementation(
+        (value) => createTestJWT({ token: value as string }) as never
+      )
+      mockAuth.ping.mockResolvedValue({ status: 401, data: {} })
+
+      const { result } = renderHook(() =>
+        useImportSession(mockAuth as unknown as AuthAPI, undefined, mockSetSession)
+      )
+
+      for (let index = 0; index < 101; index++) {
+        await act(async () => {
+          await result.current(`rejected-${index}.jwt.token`)
+        })
+      }
+
+      expect(mockAuth.ping).toHaveBeenCalledTimes(101)
+
+      // The newest rejection is still latched, so it is not pinged again.
+      mockAuth.ping.mockClear()
+      await act(async () => {
+        await result.current('rejected-100.jwt.token')
+      })
+      expect(mockAuth.ping).not.toHaveBeenCalled()
+
+      // The oldest rejection was evicted to keep the latch bounded, so it is pinged again.
+      await act(async () => {
+        await result.current('rejected-0.jwt.token')
+      })
+      expect(mockAuth.ping).toHaveBeenCalledWith('rejected-0.jwt.token')
+    })
+  })
 })

@@ -199,6 +199,38 @@ describe('useAuthenticateSession', () => {
 
       expect(mockSetSession).not.toHaveBeenCalled()
     })
+
+    it('throws when a 201 response carries no session data', async () => {
+      mockAuth.authenticate.mockResolvedValue({ status: 201, data: undefined })
+
+      const { result } = renderHook(() =>
+        useAuthenticateSession(mockAuth as unknown as AuthAPI, mockSetSession)
+      )
+
+      await expect(
+        act(async () => {
+          await result.current({ email: 'test@example.com', passcode: '123456' }, {})
+        })
+      ).rejects.toThrow('AuthAPI.authenticate: Missing data on 201')
+
+      expect(mockSetSession).not.toHaveBeenCalled()
+    })
+
+    it('throws when a 422 response carries no error data', async () => {
+      mockAuth.authenticate.mockResolvedValue({ status: 422, data: undefined })
+
+      const { result } = renderHook(() =>
+        useAuthenticateSession(mockAuth as unknown as AuthAPI, mockSetSession)
+      )
+
+      await expect(
+        act(async () => {
+          await result.current({ email: 'test@example.com', passcode: '123456' }, {})
+        })
+      ).rejects.toThrow('AuthAPI.authenticate: Missing data on 422')
+
+      expect(mockSetSession).not.toHaveBeenCalled()
+    })
   })
 
   describe('memoization', () => {
