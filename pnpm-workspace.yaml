@@ -1,15 +1,4 @@
 minimumReleaseAge: 4320 # 3 days
-minimumReleaseAgeExclude:
-  - 'next@16.4.5'
-  - '@next/env@16.4.5'
-  - '@next/swc-darwin-arm64@16.4.5'
-  - '@next/swc-darwin-x64@16.4.5'
-  - '@next/swc-linux-arm64-gnu@16.4.5'
-  - '@next/swc-linux-arm64-musl@16.4.5'
-  - '@next/swc-linux-x64-gnu@16.4.5'
-  - '@next/swc-linux-x64-musl@16.4.5'
-  - '@next/swc-win32-arm64-msvc@16.4.5'
-  - '@next/swc-win32-x64-msvc@16.4.5'
 resolutionMode: "highest"
 packages:
   - "packages/*"
@@ -51,12 +40,19 @@ overrides:
   'uuid@<=11.1.1': 11.1.1
   'vite@<=7.3.2': ^7.3.2 || ^8.0.7
   'ws@<=8.21.1': 8.21.1
-  'yargs@17': 18.1.0
-  'yargs@>18.0.0 <=18.1.0': ^18.1.0
+  # React Native's build-time CLIs (`@react-native/codegen` and react-native's own
+  # scripts/generate-codegen-artifacts.js) use the yargs 17 singleton API
+  # (`require('yargs').option(...)`), which yargs 18 removed (ESM-only). Both packages
+  # still declare `yargs: ^17.6.2` — even in the 0.90 nightlies — so these two edges stay
+  # on 17 while the rest of the tree keeps the patched 18.1.0.
+  '@react-native/codegen>yargs': ^17.7.2
+  'react-native>yargs': ^17.7.2
   'cjs-module-lexer@1': ^2.2.0
-  'simple-git@3': ^4.0.1
-  'zod@3': 4.6.6
+  'minimatch@10': 11.0.7
   'minimatch@3': 11.0.7
   'minimatch@9': 11.0.7
-  'minimatch@10': 11.0.7
   'powershell-utils@0': 0.2.1
+  'simple-git@3': ^4.0.1
+  'yargs@17': 18.1.0
+  'yargs@>18.0.0 <=18.1.0': ^18.1.0
+  'zod@3': 4.6.6
