@@ -169,11 +169,11 @@ directories to the correct skills, MCP servers, and toolchain commands.
 
 | Step | Command |
 |------|---------|
-| Validate | `yamllint` if available — Biome ignores `.github/workflows/**` |
+| Validate | `yamllint` if available — Biome's `files.includes` excludes `**/*.yml` and `**/*.yaml` |
 
 **Key rules:**
 
-- Workflow files in `.github/workflows/` are **not** checked by Biome
+- Workflow files in `.github/workflows/` are **not** checked by Biome (`**/*.yml` is excluded in `biome.json`, so Biome's YAML support never applies)
 - Validate YAML syntax manually or with `yamllint`
 - `pnpm-workspace.yaml`, `turbo.json` control monorepo orchestration
 
@@ -211,7 +211,7 @@ directories to the correct skills, MCP servers, and toolchain commands.
 
 | Step | Command |
 |------|---------|
-| Format | Prettier or manual — Biome Markdown support is limited |
+| Format | Prettier or manual — Biome's Markdown support is excluded via `**/*.md` in `biome.json` |
 | Lint | `.markdownlint.json` (MD013/MD024 disabled) via editor integration — no repo script |
 
 **Key rules:**
@@ -259,10 +259,21 @@ directories to the correct skills, MCP servers, and toolchain commands.
 pnpm exec biome check <file-or-dir> --fix
 ```
 
+Biome is installed **once at the workspace root** (`devDependencies` in the root
+`package.json`) and configured by the single root `biome.json`. Do not add it to
+individual packages: pnpm puts the root `node_modules/.bin` on `PATH`, so
+`biome` and the per-package `lint` scripts resolve the same binary and the same
+config from any directory in the monorepo.
+
+`pnpm lint` from the repo root is a **single `biome check . --fix` process** —
+it does not fan out through Turbo. Each JS package keeps its own `lint` script,
+so `cd packages/<name> && pnpm lint` still works when you want to check one
+package in isolation.
+
 ### Full Quality Check (before committing)
 
 ```bash
-pnpm lint          # Biome across all JS packages via Turbo
+pnpm lint          # Biome across the whole repo, one process from the root
 pnpm typecheck     # tsc --noEmit via Turbo
 pnpm test:unit     # Vitest with coverage — all JS packages
 ```

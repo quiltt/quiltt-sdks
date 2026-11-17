@@ -1,16 +1,31 @@
 {
-  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.6.7/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
   "files": {
     "includes": [
       "**",
       "!**/*.gen.ts",
-      "!**/.build",
-      "!**/.next",
-      "!**/android/build",
-      "!**/coverage",
-      "!**/dist",
-      "!**/generated",
-      "!**/node_modules"
+      "!**/*.md",
+      "!**/*.yaml",
+      "!**/*.yml",
+      "!!**/.agents",
+      "!!**/.build",
+      "!!**/.claude",
+      "!!**/.next",
+      "!!**/android/build",
+      "!!**/coverage",
+      "!!**/dist",
+      "!!**/generated",
+      "!!**/node_modules",
+      "!!examples/react-native-expo/android",
+      "!!examples/react-native-expo/ios",
+      "!!packages/android",
+      "!!packages/flutter",
+      "!!packages/ios"
     ]
   },
   "overrides": [
@@ -20,6 +35,31 @@
         "rules": {
           "suspicious": {
             "noUndeclaredEnvVars": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["**/*.test.ts", "**/*.test.tsx"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noComponentHookFactories": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["examples/react-native-expo/**"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noReactNativeRawText": {
+              "level": "error",
+              "options": {
+                "skip": ["ThemedText"]
+              }
+            }
           }
         }
       }
@@ -46,8 +86,6 @@
 
               ["vitest", "vitest/**"],
               ["@testing-library", "@testing-library/**"],
-
-              ":BLANK_LINE:",
 
               ":BLANK_LINE:",
 
@@ -78,13 +116,11 @@
     }
   },
   "formatter": {
-    "enabled": true,
     "lineWidth": 100,
     "indentWidth": 2,
     "indentStyle": "space"
   },
   "linter": {
-    "enabled": true,
     "rules": {
       "preset": "recommended",
       "a11y": {
@@ -102,7 +138,7 @@
         "noUnknownFunction": "off"
       },
       "nursery": {
-        "useSortedClasses": "warn"
+        "useTailwindSortedClasses": "warn"
       },
       "performance": {
         "noAccumulatingSpread": "warn",
@@ -125,13 +161,7 @@
   },
   "css": {
     "formatter": {
-      "enabled": true,
-      "quoteStyle": "single",
-      "indentWidth": 2,
-      "indentStyle": "space"
-    },
-    "linter": {
-      "enabled": true
+      "quoteStyle": "single"
     },
     "parser": {
       "tailwindDirectives": true
@@ -141,29 +171,14 @@
     "formatter": {
       "enabled": false
     },
-    "linter": {
-      "enabled": true
-    },
     "experimentalFullSupportEnabled": true
   },
   "javascript": {
     "formatter": {
-      "enabled": true,
       "arrowParentheses": "always",
       "quoteStyle": "single",
       "semicolons": "asNeeded",
       "trailingCommas": "es5"
-    },
-    "linter": {
-      "enabled": true
-    }
-  },
-  "json": {
-    "formatter": {
-      "enabled": true
-    },
-    "linter": {
-      "enabled": true
     }
   }
 }

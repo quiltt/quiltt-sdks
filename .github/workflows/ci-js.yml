@@ -32,7 +32,7 @@ jobs:
           node-version: ${{ matrix.node-version }}
 
       - name: Lint
-        run: pnpm turbo run lint --filter=!@quiltt/android --filter=!@quiltt/flutter --filter=!@quiltt/ios
+        run: pnpm lint
 
       - name: Typecheck
         run: pnpm typecheck

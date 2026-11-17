@@ -32,7 +32,7 @@ async function cloudflareInterstitial(popup: Page): Promise<string | null> {
     popup.title().catch(() => ''),
     popup
       .locator('body')
-      .innerText()
+      .textContent()
       .catch(() => ''),
   ])
   const haystack = `${title}\n${body}`.toLowerCase()
