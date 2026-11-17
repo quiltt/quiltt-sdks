@@ -263,6 +263,6 @@ into the release changelog.
 
 ## References
 
-- [RELEASING.md](../../RELEASING.md) — full release process
-- [CONTRIBUTING.md](../../CONTRIBUTING.md) — contribution workflow
+- [RELEASING.md](../../../RELEASING.md) — full release process
+- [CONTRIBUTING.md](../../../CONTRIBUTING.md) — contribution workflow
 - [Changesets documentation](https://github.com/changesets/changesets)

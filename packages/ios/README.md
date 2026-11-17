@@ -9,7 +9,7 @@
 ### Swift Package Manager
 
 1. Open your project in Xcode.
-1. Select `File` > `Add Package Dependency...`.
+1. Select `File` > `Add Package Dependencies...`.
 1. Enter [the URL of the Quiltt Connector Swift SDK repository](https://github.com/quiltt/quiltt-sdks), select the latest version and click `Add Package`.
 1. The Quiltt Connector Swift SDK is now integrated into your project. You can import it in your Swift files with `import QuilttConnector`.
 

@@ -14,10 +14,10 @@ The CI matrix tests against the following versions. Update this table when chang
 
 | Platform      | Minimum supported      | Latest tested    |
 | ------------- | ---------------------- | ---------------- |
-| Node.js       | 20                     | 26               |
+| Node.js       | 22                     | 26               |
 | Android (JDK) | 17 (AGP 8.x minimum)   | 21 (current LTS) |
 | Flutter       | 3.32.0 (Dart >= 3.8.0) | 3.41.6           |
-| iOS           | 17.5                   | 18.5             |
+| iOS           | 18.5                   | 18.5             |
 
 ## Getting Started
 
@@ -124,11 +124,17 @@ This project uses Vitest for JavaScript unit testing, Playwright for web E2E tes
 # Run JS/TS unit tests with coverage
 pnpm run test:unit
 
-# Run unit tests for specific package
+# Run unit tests for a single project (core, react, react-native, capacitor, vue)
 pnpm run test:unit -- --project react
+```
 
-# Run end-to-end tests
-pnpm run test:e2e
+For web end-to-end tests, run Playwright from the example directory:
+
+```bash
+cd examples/react-nextjs && pnpm run test:e2e
+cd examples/vue-nuxt && pnpm run test:e2e
+cd examples/capacitor-react && pnpm run test:e2e
+cd examples/capacitor-vue && pnpm run test:e2e
 ```
 
 For platform-specific testing:
@@ -163,7 +169,7 @@ swift test
 - **Happy DOM**: Lightweight DOM implementation for faster tests
 - **Gradle / JUnit**: Android unit and instrumentation testing
 - **Flutter Test**: Flutter/Dart testing
-- **Swift Testing / XCTest**: iOS testing
+- **XCTest**: iOS testing
 
 ### Code Quality
 
