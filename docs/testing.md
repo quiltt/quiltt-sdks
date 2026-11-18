@@ -62,13 +62,14 @@ pnpm run typecheck
 pnpm run test:unit
 ```
 
-Integration suites run per example or package, from that directory:
+Integration suites run per example or package, from that directory. Each line runs in a subshell so
+the working directory returns to the repository root before the next command:
 
 ```bash
-cd examples/react-nextjs && pnpm run test:e2e
-cd examples/vue-nuxt && pnpm run test:e2e
-cd examples/capacitor-react && pnpm run test:e2e
-cd examples/capacitor-vue && pnpm run test:e2e
+(cd examples/react-nextjs && pnpm run test:e2e)
+(cd examples/vue-nuxt && pnpm run test:e2e)
+(cd examples/capacitor-react && pnpm run test:e2e)
+(cd examples/capacitor-vue && pnpm run test:e2e)
 ```
 
 React Native example:
@@ -103,6 +104,33 @@ xcodebuild test \
   -scheme ExampleSwiftUI \
   -destination 'platform=iOS Simulator,name=iPhone 16 Pro'
 ```
+
+## Unit Test Coverage
+
+`tests-unit.yml` runs the JS, Android, Flutter, and iOS unit suites and uploads
+each report to Qlty under the `QLTY_COVERAGE_TOKEN` project token.
+
+Reproducing mobile coverage locally:
+
+```bash
+cd packages/android
+./gradlew connector:testDebugUnitTest connector:createDebugUnitTestCoverageReport
+# report: connector/build/reports/coverage/test/debug/index.html
+
+swift test --enable-code-coverage
+# then export the profile to lcov, as tests-unit.yml does
+```
+
+Two things make native reports easy to get wrong:
+
+- Android coverage only sees Robolectric tests because `connector/build.gradle.kts`
+  turns on `includeNoLocationClasses` for JaCoCo. Without it the sandbox classloader
+  AGP instrumented nothing and every Robolectric-backed test reported 0%. The
+  matching `jdk.internal.*` exclusion is required — the JDK's generated reflection
+  accessors are location-less too and break class loading when instrumented.
+- iOS lcov is produced by `llvm-cov export`, which silently drops source files it has
+  no mapping for. The verification step in `tests-unit.yml` warns when a file under
+  `packages/ios/Sources` is missing, so a partial report cannot pass as complete.
 
 ## Environment and Secrets
 
