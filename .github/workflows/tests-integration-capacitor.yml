@@ -1,5 +1,8 @@
 name: Integration Tests - Capacitor
 
+# Dependency files are part of the path filters: a lockfile or override change can
+# alter the resolved dependency graph and break this build without touching any
+# package path.
 on:
   push:
     branches:
@@ -11,6 +14,8 @@ on:
       - 'packages/react/**'
       - 'packages/vue/**'
       - 'packages/core/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
   pull_request:
     paths:
       - 'examples/capacitor-react/**'
@@ -19,6 +24,8 @@ on:
       - 'packages/react/**'
       - 'packages/vue/**'
       - 'packages/core/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
   workflow_dispatch:
 
 permissions:
