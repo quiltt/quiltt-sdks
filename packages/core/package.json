@@ -93,9 +93,9 @@
   ],
   "main": "dist/index.js",
   "scripts": {
-    "build": "bunchee",
+    "build": "bunchee --tsconfig tsconfig.build.json",
     "clean": "rimraf .turbo dist",
-    "dev": "bunchee --watch",
+    "dev": "bunchee --watch --tsconfig tsconfig.build.json",
     "lint": "TIMING=1 biome check . --fix",
     "typecheck": "node node_modules/typescript-7/bin/tsc --project tsconfig.json --noEmit"
   },
