@@ -68,7 +68,7 @@
     "@types/node": "24.12.2",
     "@types/react": "19.2.18",
     "base-64": "1.0.0",
-    "bunchee": "6.12.2",
+    "bunchee": "7.1.0",
     "react": "19.2.8",
     "react-native": "0.86.3",
     "react-native-url-polyfill": "3.0.0",

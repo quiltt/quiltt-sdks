@@ -55,3 +55,6 @@ overrides:
   'yargs@<18.0.0': 17.7.3
   'yargs@>18.0.0 <=18.1.0': ^18.1.0
   'zod@3': 4.6.6
+permissions:
+  '@apollo/client':
+    skills: true

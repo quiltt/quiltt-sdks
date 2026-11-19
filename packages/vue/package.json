@@ -68,7 +68,7 @@
     "@types/node": "24.12.2",
     "@vue/test-utils": "^2.4.11",
     "@wry/equality": "^0.5.7",
-    "bunchee": "6.12.2",
+    "bunchee": "7.1.0",
     "graphql": "^16.13.0",
     "rimraf": "6.1.3",
     "rxjs": "^7.8.2",
