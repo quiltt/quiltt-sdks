@@ -1,5 +1,8 @@
 name: Integration Tests - React Native
 
+# Dependency files are part of the path filters: a lockfile or override change can
+# alter the resolved dependency graph and break this build without touching any
+# package path.
 on:
   push:
     branches:
@@ -8,11 +11,15 @@ on:
       - "examples/react-native-expo/**"
       - "packages/react-native/**"
       - "packages/core/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
   pull_request:
     paths:
       - "examples/react-native-expo/**"
       - "packages/react-native/**"
       - "packages/core/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
   workflow_dispatch:
 
 # Cancel superseded runs on the same ref (e.g. a new push to a PR) instead of

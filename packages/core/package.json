@@ -93,9 +93,9 @@
   ],
   "main": "dist/index.js",
   "scripts": {
-    "build": "bunchee",
+    "build": "bunchee --tsconfig tsconfig.build.json",
     "clean": "rimraf .turbo dist",
-    "dev": "bunchee --watch",
+    "dev": "bunchee --watch --tsconfig tsconfig.build.json",
     "lint": "TIMING=1 biome check . --fix",
     "typecheck": "node node_modules/typescript-7/bin/tsc --project tsconfig.json --noEmit"
   },
@@ -111,7 +111,7 @@
     "@types/node": "24.12.2",
     "@types/rails__actioncable": "8.0.3",
     "@types/react": "19.2.18",
-    "bunchee": "6.12.2",
+    "bunchee": "7.1.0",
     "rimraf": "6.1.3",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-7": "npm:typescript@7.0.2"

@@ -56,9 +56,9 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "build": "bunchee",
+    "build": "bunchee --tsconfig tsconfig.build.json",
     "clean": "rimraf .turbo dist",
-    "dev": "bunchee --watch",
+    "dev": "bunchee --watch --tsconfig tsconfig.build.json",
     "lint": "TIMING=1 biome check . --fix",
     "typecheck": "node node_modules/typescript-7/bin/tsc --project tsconfig.json --noEmit",
     "verify": "npm run verify:ios && npm run verify:android && npm run verify:web",
@@ -77,8 +77,8 @@
     "@types/node": "24.12.2",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",
-    "@vue/test-utils": "^2.4.11",
-    "bunchee": "6.12.2",
+    "@vue/test-utils": "2.4.11",
+    "bunchee": "7.1.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "rimraf": "6.1.3",

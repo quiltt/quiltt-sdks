@@ -9,6 +9,8 @@ allowBuilds:
   dtrace-provider: true
   esbuild: true
   sharp: true
+patchedDependencies:
+  'yargs@17.7.3': patches/yargs-17.7.3-proto-guard.patch
 overrides:
   '@turbo/darwin-64@<=2.9.18': 2.9.18
   '@turbo/linux-64@<=2.9.18': 2.9.18
@@ -40,19 +42,19 @@ overrides:
   'uuid@<=11.1.1': 11.1.1
   'vite@<=7.3.2': ^7.3.2 || ^8.0.7
   'ws@<=8.21.1': 8.21.1
-  # React Native's build-time CLIs (`@react-native/codegen` and react-native's own
-  # scripts/generate-codegen-artifacts.js) use the yargs 17 singleton API
-  # (`require('yargs').option(...)`), which yargs 18 removed (ESM-only). Both packages
-  # still declare `yargs: ^17.6.2` — even in the 0.90 nightlies — so these two edges stay
-  # on 17 while the rest of the tree keeps the patched 18.1.0.
-  '@react-native/codegen>yargs': ^17.7.2
-  'react-native>yargs': ^17.7.2
   'cjs-module-lexer@1': ^2.2.0
   'minimatch@10': 11.0.7
   'minimatch@3': 11.0.7
   'minimatch@9': 11.0.7
   'powershell-utils@0': 0.2.1
   'simple-git@3': ^4.0.1
-  'yargs@17': 18.1.0
+  # yargs 18 is ESM-only and dropped the v17 chained API that React Native's
+  # codegen scripts and metro's CLI still call, so every pre-18 consumer stays on
+  # 17.7.3 — with the 18.1.0 `__proto__` merge guard backported via
+  # `patchedDependencies` (AIKIDO-2026-922647) — until those packages migrate.
+  'yargs@<18.0.0': 17.7.3
   'yargs@>18.0.0 <=18.1.0': ^18.1.0
   'zod@3': 4.6.6
+permissions:
+  '@apollo/client':
+    skills: true

@@ -49,9 +49,9 @@
   ],
   "main": "dist/index.js",
   "scripts": {
-    "build": "bunchee",
+    "build": "bunchee --tsconfig tsconfig.build.json",
     "clean": "rimraf .turbo dist",
-    "dev": "bunchee --watch",
+    "dev": "bunchee --watch --tsconfig tsconfig.build.json",
     "lint": "TIMING=1 biome check . --fix",
     "typecheck": "node node_modules/typescript-7/bin/tsc --project tsconfig.json --noEmit"
   },
@@ -68,7 +68,7 @@
     "@types/node": "24.12.2",
     "@types/react": "19.2.18",
     "base-64": "1.0.0",
-    "bunchee": "6.12.2",
+    "bunchee": "7.1.0",
     "react": "19.2.8",
     "react-native": "0.86.3",
     "react-native-url-polyfill": "3.0.0",
