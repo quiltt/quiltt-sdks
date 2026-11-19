@@ -74,6 +74,7 @@ const mockStyleSheet = {
 
 const mockLinking = {
   openURL: vi.fn(),
+  canOpenURL: vi.fn(),
   addEventListener: vi.fn(),
   removeEventListener: vi.fn(),
   getInitialURL: vi.fn(),
@@ -85,6 +86,7 @@ vi.mock('react-native', () => ({
   Image: (props: any) => React.createElement('Image', props),
   Linking: {
     openURL: vi.fn(),
+    canOpenURL: vi.fn(),
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
     getInitialURL: vi.fn(),
