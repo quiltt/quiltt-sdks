@@ -50,6 +50,55 @@ jobs:
           fi
           echo "Release token is present and accepted by GitHub."
 
+      # A push to main is rejected with GH006 as soon as the branch protection
+      # rule runs, but that surfaces in update-versions as a generic "protected
+      # branch hook declined" — indistinguishable from a permissions problem.
+      # Check the specific mismatch (token owner vs. bypass list) up front, before
+      # anything is written.
+      - name: Verify release token can bypass main's PR requirement
+        env:
+          # The release PAT is the identity under test, and it needs no scope
+          # beyond what it already holds to bypass the requirement.
+          GH_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          USER_JSON=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
+            https://api.github.com/user || true)
+          LOGIN=$(echo "$USER_JSON" | jq -r '.login // empty')
+          if [ -z "$LOGIN" ]; then
+            echo "ERROR: could not resolve the release token's identity."
+            exit 1
+          fi
+
+          # Reading branch protection requires the admin role. A token can hold
+          # a bypass allowance without being an admin, so a failure here means
+          # "cannot verify", not "cannot push" — warn and let the push decide.
+          if ! PROTECTION=$(gh api "repos/${GITHUB_REPOSITORY}/branches/main/protection" 2>/dev/null); then
+            echo "WARNING: '$LOGIN' cannot read main's branch protection (needs admin); skipping the bypass check."
+            exit 0
+          fi
+
+          BYPASS_USERS=$(echo "$PROTECTION" |
+            jq -r '[.required_pull_request_reviews.bypass_pull_request_allowances.users[].login] | join(",")')
+          BYPASS_APPS=$(echo "$PROTECTION" |
+            jq -r '[.required_pull_request_reviews.bypass_pull_request_allowances.apps[].slug] | join(",")')
+
+          case ",$BYPASS_USERS," in
+            *",$LOGIN,"*)
+              echo "Token owner '$LOGIN' may bypass main's pull-request requirement."
+              ;;
+            *)
+              echo "ERROR: main only allows these users to bypass its pull-request requirement: ${BYPASS_USERS:-<none>}"
+              echo "ERROR: apps allowed to bypass: ${BYPASS_APPS:-<none>}"
+              echo "ERROR: RELEASE_GITHUB_TOKEN belongs to '$LOGIN', which is on neither list,"
+              echo "ERROR: so update-versions cannot push the release commit to main."
+              echo "ERROR: either rotate the secret to a PAT owned by an allowed account, or add"
+              echo "ERROR: '$LOGIN' under Settings -> Branches -> main -> 'Allow specified actors"
+              echo "ERROR: to bypass required pull requests'."
+              exit 1
+              ;;
+          esac
+
       - name: Extract version from tag
         id: version
         run: |
@@ -179,22 +228,33 @@ jobs:
 
             # Tag missing on origin — force-create local tag at HEAD (overwrites any stale local tag)
             git tag -f "$tag" HEAD
-            tags_to_push+=("refs/tags/$tag:refs/tags/$tag")
             if [ "$tag" = "flutter/v$VERSION" ]; then
               flutter_tag_pushed=true
+            else
+              tags_to_push+=("refs/tags/$tag:refs/tags/$tag")
             fi
           done
 
+          # The platform tags carry no workflow trigger, so they travel together
+          # in one atomic push and stay all-or-nothing.
           if [ ${#tags_to_push[@]} -gt 0 ]; then
-            # Pushing flutter/v$VERSION triggers release-flutter.yml
-            # (on: push: tags: flutter/v*) — required for pub.dev's OIDC
-            # trusted-publishing check, which rejects workflow_dispatch runs.
-            #
-            # This push MUST be authenticated by the release PAT (set up by
-            # "Authenticate Git with the release token"). A tag push made with
-            # the default GITHUB_TOKEN triggers no workflows at all, which
-            # silently skips the Flutter publish.
             git push --atomic origin "${tags_to_push[@]}"
+          fi
+
+          # flutter/v$VERSION is pushed on its own, never inside the atomic batch
+          # above. A multi-ref atomic push does not fire a push event that
+          # workflows can trigger on, so release-flutter.yml never started and
+          # pub.dev silently stayed a version behind. Observed on the 6.2.0 run:
+          # the same token pushed main one second earlier and started 10
+          # workflows, while the atomic push of four tags started none; pushing
+          # flutter/v$VERSION on its own started release-flutter.yml in 25s.
+          #
+          # This push MUST be authenticated by the release PAT (set up by
+          # "Authenticate Git with the release token"). A tag push made with
+          # the default GITHUB_TOKEN triggers no workflows at all, which
+          # silently skips the Flutter publish.
+          if [ "$flutter_tag_pushed" = true ]; then
+            git push origin "refs/tags/flutter/v$VERSION:refs/tags/flutter/v$VERSION"
           fi
 
           # Fail loudly if the Flutter publish was not scheduled. Without this a
