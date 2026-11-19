@@ -119,6 +119,10 @@ describe('QuilttConnector', () => {
       await handleOAuthUrl(url)
 
       expect(Linking.openURL).toHaveBeenCalledWith(url)
+      // Regression guard: `Linking.canOpenURL` is not authoritative on Android
+      // 11+ (package visibility returns false while `openURL` would succeed),
+      // so it must never gate the handoff
+      expect(Linking.canOpenURL).not.toHaveBeenCalled()
     })
 
     it('should fire onFailure when openURL rejects', async () => {
