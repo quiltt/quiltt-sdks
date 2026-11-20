@@ -130,7 +130,7 @@ jobs:
             xcrun llvm-cov export "$BINARY" \
               -instr-profile "$PROFDATA" \
               -format lcov \
-              --ignore-filename-regex='.*\.build.*|.*Tests.*' \
+              --ignore-filename-regex='/packages/ios/Tests/|/\.build/' \
               > packages/ios/coverage/lcov.info
             echo "Coverage report generated at packages/ios/coverage/lcov.info"
           else
@@ -146,6 +146,23 @@ jobs:
             exit 1
           fi
           echo "lcov.info size: $(wc -c < packages/ios/coverage/lcov.info) bytes"
+
+          # llvm-cov silently drops sources it has no mapping for, and Qlty then scores the
+          # SDK over the surviving files only. Surface that instead of letting a partial
+          # report look like a complete one.
+          missing=0
+          for source in packages/ios/Sources/QuilttConnector/*.swift; do
+            name="Sources/QuilttConnector/$(basename "$source")"
+            if ! grep -qF "$name" packages/ios/coverage/lcov.info; then
+              echo "::warning::$name is missing from lcov.info"
+              missing=$((missing + 1))
+            fi
+          done
+          if [ "$missing" -gt 0 ]; then
+            echo "$missing source file(s) absent from the coverage report"
+          else
+            echo "All iOS source files are present in lcov.info"
+          fi
 
       - name: Upload coverage to Qlty
         if: always()
