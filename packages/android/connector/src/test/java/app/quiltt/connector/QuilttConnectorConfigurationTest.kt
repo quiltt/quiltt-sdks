@@ -94,4 +94,17 @@ class QuilttConnectorConfigurationTest {
         )
         assertEquals("auto", config.themeMode)
     }
+
+    // QuilttConnectorConfiguration
+
+    @Test
+    fun configurationInterface_themeModeDefaultsToNull() {
+        val config = object : QuilttConnectorConfiguration {
+            override val connectorId = "c"
+            override val appLauncherUrl = "https://example.com"
+            override val connectionId: String? = null
+            override val institution: String? = null
+        }
+        assertNull(config.themeMode)
+    }
 }

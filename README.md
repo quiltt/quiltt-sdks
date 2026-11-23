@@ -128,13 +128,14 @@ pnpm run test:unit
 pnpm run test:unit -- --project react
 ```
 
-For web end-to-end tests, run Playwright from the example directory:
+For web end-to-end tests, run Playwright from each example directory. Each line runs in a subshell
+so the working directory is back at the repository root for the next one:
 
 ```bash
-cd examples/react-nextjs && pnpm run test:e2e
-cd examples/vue-nuxt && pnpm run test:e2e
-cd examples/capacitor-react && pnpm run test:e2e
-cd examples/capacitor-vue && pnpm run test:e2e
+(cd examples/react-nextjs && pnpm run test:e2e)
+(cd examples/vue-nuxt && pnpm run test:e2e)
+(cd examples/capacitor-react && pnpm run test:e2e)
+(cd examples/capacitor-vue && pnpm run test:e2e)
 ```
 
 For platform-specific testing:

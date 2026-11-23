@@ -260,7 +260,7 @@ describe('QuilttAuthProvider', () => {
     vi.mocked(isDeepEqual).mockReturnValue(true)
   })
 
-  it('does not reset a client attached after mount when the session is unread', () => {
+  it('does not reset a client attached after mount when the read session is empty', () => {
     mockRestored = true
     mockSession = undefined
 

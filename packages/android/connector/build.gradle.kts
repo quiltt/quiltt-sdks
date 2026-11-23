@@ -1,3 +1,5 @@
+import org.gradle.testing.jacoco.plugins.JacocoTaskExtension
+
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
@@ -43,6 +45,20 @@ android {
         unitTests {
             isIncludeAndroidResources = true
             all { test ->
+                // Robolectric loads the SDK classes through its own sandbox classloader, which
+                // has no code-source location. AGP skips those classes by default, so every
+                // Robolectric-backed test was invisible to JaCoCo and the coverage report showed
+                // 0% for the classes those tests exist to cover.
+                //
+                // The JDK's generated reflection accessors are also location-less; instrumenting
+                // them breaks class loading (`NoClassDefFoundError:
+                // jdk/internal/reflect/GeneratedSerializationConstructorAccessor1`), so they
+                // stay excluded.
+                test.extensions.configure(JacocoTaskExtension::class.java) {
+                    isIncludeNoLocationClasses = true
+                    excludes = listOf("jdk.internal.*")
+                }
+
                 // Use locally installed Android SDK when available (e.g. CI runners)
                 // to avoid Robolectric downloading framework JARs from Maven at test time.
                 val sdkRoot = System.getenv("ANDROID_SDK_ROOT") ?: System.getenv("ANDROID_HOME")
