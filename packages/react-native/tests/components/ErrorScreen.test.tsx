@@ -30,4 +30,20 @@ describe('ErrorScreen', () => {
     fireEvent.press(button)
     expect(mockCta).toHaveBeenCalled()
   })
+
+  it('should render a custom title and CTA label', () => {
+    const { getByText } = render(
+      <ErrorScreen
+        testId="error-screen"
+        title="Unable to load the Connector."
+        error={errorText}
+        ctaLabel="Try again"
+        cta={mockCta}
+      />
+    )
+
+    expect(getByText('Unable to load the Connector.')).toBeTruthy()
+    fireEvent.press(getByText('Try again'))
+    expect(mockCta).toHaveBeenCalled()
+  })
 })

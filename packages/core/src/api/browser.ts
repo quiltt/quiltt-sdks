@@ -100,6 +100,39 @@ export enum ConnectorSDKEventType {
 }
 
 /**
+ * Why the Connector could not start.
+ *
+ * - `preflight_failed`: the Connector document could not be reached, or it
+ *   answered with an unexpected HTTP status.
+ * - `asset_load_failed`: the document loaded, but a required JavaScript asset
+ *   (the module entry, a statically imported chunk, or a `modulepreload`
+ *   dependency) could not be fetched.
+ * - `webview_failed`: the WebView reported a load or main-frame HTTP error.
+ * - `startup_timeout`: the Connector never completed its `Load` handshake.
+ */
+export type ConnectorSDKStartupErrorCode =
+  | 'preflight_failed'
+  | 'asset_load_failed'
+  | 'webview_failed'
+  | 'startup_timeout'
+
+/**
+ * Structured reason attached to an `ExitError` when the Connector failed to
+ * start. Older clients ignore it; new clients can use `code` to tell an
+ * unrecoverable asset failure apart from a transient timeout.
+ */
+export type ConnectorSDKCallbackError = {
+  /** Machine-readable failure class */
+  code: ConnectorSDKStartupErrorCode
+  /** Human-readable failure description */
+  message: string
+  /** HTTP status when the failure came from a response */
+  statusCode?: number
+  /** Asset or document URL involved in the failure, when known */
+  url?: string
+}
+
+/**
  * Metadata about a Connector event
  * @param connectorId The ID of the Connector that emitted the event
  * @param profileId The ID of the authenticated Profile
@@ -116,6 +149,11 @@ export type ConnectorSDKCallbackMetadata = {
   connectorSession?: {
     id: string
   }
+  /**
+   * Present when the Connector failed to start. Only set on `ExitError`
+   * events (and the `onExitError` callback).
+   */
+  error?: ConnectorSDKCallbackError
 }
 
 /**

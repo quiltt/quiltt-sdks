@@ -4,11 +4,21 @@ import { AndroidSafeAreaView } from './AndroidSafeAreaView'
 
 type ErrorScreenProps = {
   testId?: string
+  /** Heading shown above the error. Defaults to a connectivity message. */
+  title?: string
   error: string
+  /** Label for the single action button. Defaults to "Exit". */
+  ctaLabel?: string
   cta: () => void
 }
 
-export const ErrorScreen = ({ testId, error, cta }: ErrorScreenProps) => (
+export const ErrorScreen = ({
+  testId,
+  title = 'Cannot connect to the internet.',
+  error,
+  ctaLabel = 'Exit',
+  cta,
+}: ErrorScreenProps) => (
   <AndroidSafeAreaView testId={testId}>
     <View style={[styles.container, styles.padding]}>
       <View style={{ flex: 1, justifyContent: 'center' }}>
@@ -20,12 +30,12 @@ export const ErrorScreen = ({ testId, error, cta }: ErrorScreenProps) => (
             marginVertical: 10,
           }}
         >
-          <Text style={[styles.title]}>Cannot connect to the internet.</Text>
+          <Text style={[styles.title]}>{title}</Text>
         </View>
         <Text style={[styles.subtitle]}>{error}</Text>
       </View>
       <Pressable style={[styles.pressable]} onPress={cta}>
-        <Text style={[styles.pressableText]}>Exit</Text>
+        <Text style={[styles.pressableText]}>{ctaLabel}</Text>
       </Pressable>
     </View>
   </AndroidSafeAreaView>

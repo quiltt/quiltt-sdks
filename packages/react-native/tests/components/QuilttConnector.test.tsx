@@ -3,7 +3,7 @@ import { Linking, Platform } from 'react-native'
 
 import type { MockInstance } from 'vitest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, waitFor } from '@testing-library/react-native'
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native'
 
 import { ConnectorSDKEventType } from '@quiltt/core'
 
@@ -18,12 +18,14 @@ import {
 let capturedWebViewProps: any = null
 let capturedWebViewRef: any = null
 
+const { notifyMock } = vi.hoisted(() => ({
+  notifyMock: vi.fn((_error: Error, _context?: Record<string, unknown>) => Promise.resolve()),
+}))
+
 // Mock ErrorReporter before importing QuilttConnector
 vi.mock('@/utils/error/ErrorReporter', () => ({
   ErrorReporter: class {
-    notify() {
-      return Promise.resolve()
-    }
+    notify = notifyMock
   },
 }))
 
@@ -86,6 +88,28 @@ describe('QuilttConnector', () => {
   afterEach(() => {
     vi.clearAllMocks()
   })
+
+  const FAILING_ASSET_URL = 'https://cdn.quiltt.io/vite/assets/ScreenInspector--LK1I1V8.js'
+  const CONNECTOR_HTML = `<!doctype html><html><head>
+    <link rel="modulepreload" href="${FAILING_ASSET_URL}">
+    <script type="module" src="https://cdn.quiltt.io/vite/connector/application.js"></script>
+  </head><body><div id="root"></div></body></html>`
+
+  const mockConnectorDocument = (failingAssetUrl?: string) => {
+    fetchSpy.mockImplementation((input, init) => {
+      if (init?.method === 'HEAD') {
+        const status = failingAssetUrl && String(input) === failingAssetUrl ? 404 : 200
+        return Promise.resolve(new Response(null, { status }))
+      }
+
+      return Promise.resolve(
+        new Response(CONNECTOR_HTML, {
+          status: 200,
+          headers: { 'Content-Type': 'text/html' },
+        })
+      )
+    })
+  }
 
   describe('handleOAuthUrl', () => {
     beforeEach(() => {
@@ -242,6 +266,12 @@ describe('QuilttConnector', () => {
       expect(capturedWebViewProps.scrollEnabled).toBe(true)
       expect(capturedWebViewProps.showsVerticalScrollIndicator).toBe(false)
       expect(capturedWebViewProps.showsHorizontalScrollIndicator).toBe(false)
+      expect(typeof capturedWebViewProps.onError).toBe('function')
+      expect(typeof capturedWebViewProps.onHttpError).toBe('function')
+      expect(typeof capturedWebViewProps.onMessage).toBe('function')
+      expect(capturedWebViewProps.injectedJavaScriptBeforeContentLoaded).toContain(
+        '__quilttStartupMonitorInstalled'
+      )
     })
 
     it('should apply iOS specific props when platform is iOS', async () => {
@@ -279,7 +309,7 @@ describe('QuilttConnector', () => {
         // Test Android specific props
         expect(capturedWebViewProps.androidLayerType).toBe('hardware')
         expect(capturedWebViewProps.cacheEnabled).toBe(true)
-        expect(capturedWebViewProps.cacheMode).toBe('LOAD_CACHE_ELSE_NETWORK')
+        expect(capturedWebViewProps.cacheMode).toBe('LOAD_DEFAULT')
         expect(capturedWebViewProps.overScrollMode).toBe('never')
 
         // Ensure iOS props are not present
@@ -326,7 +356,7 @@ describe('QuilttConnector', () => {
           expect(() => getByTestId('loading-screen')).toThrow()
           expect(getByTestId('error-screen')).toBeTruthy()
         },
-        { timeout: 3000 }
+        { timeout: 6000 }
       ) // Increased timeout to account for retries
     })
 
@@ -362,11 +392,16 @@ describe('QuilttConnector', () => {
 
       const { getByText } = render(<QuilttConnector {...defaultProps} onExitError={onExitError} />)
 
-      await waitFor(() => expect(getByText('Exit')).toBeTruthy(), { timeout: 3000 })
+      await waitFor(() => expect(getByText('Exit')).toBeTruthy(), { timeout: 6000 })
 
       fireEvent.press(getByText('Exit'))
 
-      expect(onExitError).toHaveBeenCalledWith({ connectorId: 'test-connector' })
+      expect(onExitError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connectorId: 'test-connector',
+          error: expect.objectContaining({ code: 'preflight_failed' }),
+        })
+      )
     })
 
     it('should not render once unmounted before the SDK agent resolves', async () => {
@@ -430,39 +465,39 @@ describe('QuilttConnector', () => {
         .mockRejectedValueOnce(new Error('First failure'))
         .mockResolvedValueOnce(createMockResponse(200, { ok: true }))
 
-      const result = await checkConnectorUrl('http://test.com', mockErrorReporter, 0)
+      const result = await checkConnectorUrl('http://test.com', mockErrorReporter)
       expect(result).toEqual({ checked: true })
       expect(fetchSpy).toHaveBeenCalledTimes(2)
     })
 
-    it('should handle 400 status code', async () => {
+    it('should treat HTTP 400 as a preflight failure', async () => {
       const mockErrorReporter = {
         notify: vi.fn().mockResolvedValue(undefined),
       } as any
-      const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
       fetchSpy.mockResolvedValue(createMockResponse(400, {}))
       const result = await checkConnectorUrl('http://test.com', mockErrorReporter)
 
-      expect(result).toEqual({ checked: true })
-      expect(consoleLogSpy).toHaveBeenCalledWith('Invalid configuration')
-
-      consoleLogSpy.mockRestore()
+      expect(result.checked).toBe(true)
+      expect(result.errorCode).toBe('preflight_failed')
+      expect(result.statusCode).toBe(400)
+      expect(mockErrorReporter.notify).toHaveBeenCalledTimes(1)
+      expect(fetchSpy).toHaveBeenCalledTimes(1)
     })
 
-    it('should handle 404 status code', async () => {
+    it('should treat HTTP 404 as a preflight failure', async () => {
       const mockErrorReporter = {
         notify: vi.fn().mockResolvedValue(undefined),
       } as any
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
       fetchSpy.mockResolvedValue(createMockResponse(404, {}))
       const result = await checkConnectorUrl('http://test.com', mockErrorReporter)
 
-      expect(result).toEqual({ checked: true })
-      expect(consoleErrorSpy).toHaveBeenCalledWith('Connector not found')
-
-      consoleErrorSpy.mockRestore()
+      expect(result.checked).toBe(true)
+      expect(result.errorCode).toBe('preflight_failed')
+      expect(result.statusCode).toBe(404)
+      expect(mockErrorReporter.notify).toHaveBeenCalledTimes(1)
+      expect(fetchSpy).toHaveBeenCalledTimes(1)
     })
 
     it('should report error after max retries', async () => {
@@ -472,7 +507,7 @@ describe('QuilttConnector', () => {
 
       fetchSpy.mockRejectedValue(new Error('Network Error'))
 
-      const result = await checkConnectorUrl('http://test.com', mockErrorReporter, 0)
+      const result = await checkConnectorUrl('http://test.com', mockErrorReporter)
 
       expect(result.checked).toBe(true)
       expect(result.error).toBeDefined()
@@ -488,11 +523,11 @@ describe('QuilttConnector', () => {
 
       fetchSpy.mockResolvedValue(createMockResponse(500, {}))
 
-      const result = await checkConnectorUrl('http://test.com', mockErrorReporter, 0)
+      const result = await checkConnectorUrl('http://test.com', mockErrorReporter)
 
       expect(fetchSpy).toHaveBeenCalledTimes(4)
       expect(result.checked).toBe(true)
-      expect(result.error).toContain('Connector URL is not routable.')
+      expect(result.error).toContain('Response status: 500')
       expect(mockErrorReporter.notify).toHaveBeenCalledTimes(1)
 
       consoleErrorSpy.mockRestore()
@@ -508,19 +543,56 @@ describe('QuilttConnector', () => {
 
       fetchSpy.mockRejectedValue(undefined)
 
-      const result = await checkConnectorUrl('http://test.com', mockErrorReporter, 0)
+      const result = await checkConnectorUrl('http://test.com', mockErrorReporter)
 
-      expect(result).toEqual({
-        checked: true,
-        error: 'An error occurred while checking the Connector URL',
-      })
-      expect(mockErrorReporter.notify).toHaveBeenCalledWith(expect.any(Error), {
-        connectorUrl: 'http://test.com',
-        responseStatus: undefined,
-      })
+      expect(result).toEqual(
+        expect.objectContaining({
+          checked: true,
+          error: 'An error occurred while checking the Connector URL',
+        })
+      )
+      expect(mockErrorReporter.notify).toHaveBeenCalledWith(
+        expect.any(Error),
+        expect.objectContaining({
+          connectorUrl: 'http://test.com',
+          errorCode: 'preflight_failed',
+        })
+      )
 
       consoleErrorSpy.mockRestore()
       consoleLogSpy.mockRestore()
+    })
+
+    it('should surface a missing modulepreload asset as an asset failure', async () => {
+      const mockErrorReporter = {
+        notify: vi.fn().mockResolvedValue(undefined),
+      } as any
+      const failingAsset = 'https://cdn.quiltt.io/vite/assets/ScreenInspector--LK1I1V8.js'
+      const html = `<!doctype html><html><head>
+        <link rel="modulepreload" href="${failingAsset}">
+        <script type="module" src="https://cdn.quiltt.io/vite/connector/application.js"></script>
+      </head><body></body></html>`
+
+      fetchSpy.mockImplementation((input, init) => {
+        if (init?.method === 'HEAD') {
+          const status = String(input) === failingAsset ? 404 : 200
+          return Promise.resolve(new Response(null, { status }))
+        }
+        return Promise.resolve(
+          new Response(html, { status: 200, headers: { 'Content-Type': 'text/html' } })
+        )
+      })
+
+      const result = await checkConnectorUrl('http://test.com', mockErrorReporter)
+
+      expect(result.checked).toBe(true)
+      expect(result.errorCode).toBe('asset_load_failed')
+      expect(result.statusCode).toBe(404)
+      expect(result.failedUrl).toBe(failingAsset)
+      expect(mockErrorReporter.notify).toHaveBeenCalledWith(
+        expect.any(Error),
+        expect.objectContaining({ errorCode: 'asset_load_failed', failedUrl: failingAsset })
+      )
     })
   })
 
@@ -1249,6 +1321,466 @@ describe('QuilttConnector', () => {
 
       // Verify that JavaScript was NOT injected on Android
       expect(mockInjectJavaScript).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('Startup failure surfacing', () => {
+    beforeEach(() => {
+      Platform.OS = 'ios'
+    })
+
+    const waitForWebView = () =>
+      waitFor(() => {
+        expect(capturedWebViewProps).toBeTruthy()
+      })
+
+    const setWebViewRef = () => {
+      const injectJavaScript = vi.fn()
+      if (capturedWebViewRef && typeof capturedWebViewRef === 'object') {
+        ;(capturedWebViewRef as any).current = { injectJavaScript }
+      }
+      return injectJavaScript
+    }
+
+    it('shows an error and notifies terminally when a declared asset is missing', async () => {
+      mockConnectorDocument(FAILING_ASSET_URL)
+
+      const onEvent = vi.fn()
+      const onExit = vi.fn()
+      const onExitError = vi.fn()
+      const { getByText } = render(
+        <QuilttConnector
+          {...defaultProps}
+          onEvent={onEvent}
+          onExit={onExit}
+          onExitError={onExitError}
+        />
+      )
+
+      await waitFor(() => expect(getByText('Try again')).toBeTruthy(), { timeout: 3000 })
+
+      const expectedMetadata = expect.objectContaining({
+        connectorId: 'test-connector',
+        error: expect.objectContaining({
+          code: 'asset_load_failed',
+          statusCode: 404,
+          url: FAILING_ASSET_URL,
+        }),
+      })
+
+      expect(onEvent).toHaveBeenCalledWith(ConnectorSDKEventType.ExitError, expectedMetadata)
+      expect(onExit).toHaveBeenCalledWith(ConnectorSDKEventType.ExitError, expectedMetadata)
+      expect(onExitError).toHaveBeenCalledWith(expectedMetadata)
+    })
+
+    it('re-runs preflight when the user retries a confirmed asset failure', async () => {
+      mockConnectorDocument(FAILING_ASSET_URL)
+
+      const { getByText, queryByTestId } = render(<QuilttConnector {...defaultProps} />)
+      await waitFor(() => expect(getByText('Try again')).toBeTruthy(), { timeout: 3000 })
+
+      mockConnectorDocument()
+      fireEvent.press(getByText('Try again'))
+
+      await waitFor(
+        () => {
+          expect(queryByTestId('error-screen')).toBeNull()
+          expect(capturedWebViewProps).toBeTruthy()
+        },
+        { timeout: 3000 }
+      )
+    })
+
+    it('surfaces a WebView load error and notifies on Exit', async () => {
+      const onEvent = vi.fn()
+      const onExit = vi.fn()
+      const onExitError = vi.fn()
+      const { getByText } = render(
+        <QuilttConnector
+          {...defaultProps}
+          onEvent={onEvent}
+          onExit={onExit}
+          onExitError={onExitError}
+        />
+      )
+
+      await waitForWebView()
+      act(() => {
+        capturedWebViewProps.onError({
+          nativeEvent: {
+            code: -1,
+            description: 'The WebView failed to load.',
+            url: 'https://test-connector.quiltt.app/',
+          },
+        })
+      })
+
+      await waitFor(() => expect(getByText('Exit')).toBeTruthy())
+
+      expect(onEvent).toHaveBeenCalledWith(
+        ConnectorSDKEventType.ExitError,
+        expect.objectContaining({
+          error: expect.objectContaining({
+            code: 'webview_failed',
+            message: 'The WebView failed to load.',
+          }),
+        })
+      )
+      expect(onExit).not.toHaveBeenCalled()
+
+      fireEvent.press(getByText('Exit'))
+
+      expect(onExit).toHaveBeenCalledWith(
+        ConnectorSDKEventType.ExitError,
+        expect.objectContaining({
+          error: expect.objectContaining({ code: 'webview_failed' }),
+        })
+      )
+      expect(onExitError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.objectContaining({ code: 'webview_failed' }),
+        })
+      )
+    })
+
+    it('surfaces a main-frame HTTP error', async () => {
+      const onEvent = vi.fn()
+      const { getByText } = render(<QuilttConnector {...defaultProps} onEvent={onEvent} />)
+
+      await waitForWebView()
+      act(() => {
+        capturedWebViewProps.onHttpError({
+          nativeEvent: {
+            statusCode: 503,
+            description: 'Service Unavailable',
+            url: 'https://test-connector.quiltt.app/',
+          },
+        })
+      })
+
+      await waitFor(() => expect(getByText('Exit')).toBeTruthy())
+      expect(onEvent).toHaveBeenCalledWith(
+        ConnectorSDKEventType.ExitError,
+        expect.objectContaining({
+          error: expect.objectContaining({ code: 'webview_failed', statusCode: 503 }),
+        })
+      )
+    })
+
+    it('turns a pre-mount asset error reported by the page into a terminal ExitError', async () => {
+      const onEvent = vi.fn()
+      const onExit = vi.fn()
+      const onExitError = vi.fn()
+      const { getByText } = render(
+        <QuilttConnector
+          {...defaultProps}
+          onEvent={onEvent}
+          onExit={onExit}
+          onExitError={onExitError}
+        />
+      )
+
+      await waitForWebView()
+      const assetUrl = 'https://cdn.quiltt.io/vite/assets/chunk-missing.js'
+
+      act(() => {
+        capturedWebViewProps.onMessage({
+          nativeEvent: {
+            data: JSON.stringify({
+              source: 'quiltt',
+              type: 'startup_error',
+              code: 'asset_load_failed',
+              url: assetUrl,
+              message: 'A required Connector asset could not be loaded.',
+            }),
+          },
+        })
+      })
+
+      await waitFor(() => expect(getByText('Try again')).toBeTruthy())
+
+      const expectedMetadata = expect.objectContaining({
+        error: expect.objectContaining({ code: 'asset_load_failed', url: assetUrl }),
+      })
+      expect(onEvent).toHaveBeenCalledWith(ConnectorSDKEventType.ExitError, expectedMetadata)
+      expect(onExit).toHaveBeenCalledWith(ConnectorSDKEventType.ExitError, expectedMetadata)
+      expect(onExitError).toHaveBeenCalledWith(expectedMetadata)
+    })
+
+    it('turns a platform-sent asset ExitError into a terminal failure with metadata', async () => {
+      const onEvent = vi.fn()
+      const onExit = vi.fn()
+      const onExitError = vi.fn()
+      const { getByText } = render(
+        <QuilttConnector
+          {...defaultProps}
+          onEvent={onEvent}
+          onExit={onExit}
+          onExitError={onExitError}
+        />
+      )
+
+      await waitForWebView()
+      const assetUrl = 'https://cdn.quiltt.io/vite/assets/chunk-missing.js'
+
+      act(() => {
+        capturedWebViewProps.onShouldStartLoadWithRequest({
+          url: `quilttconnector://ExitError?reason=asset_load_failed&url=${encodeURIComponent(assetUrl)}`,
+        })
+      })
+
+      await waitFor(() => expect(getByText('Try again')).toBeTruthy())
+
+      const expectedMetadata = expect.objectContaining({
+        connectorId: 'test-connector',
+        error: expect.objectContaining({ code: 'asset_load_failed', url: assetUrl }),
+      })
+      expect(onEvent).toHaveBeenCalledWith(ConnectorSDKEventType.ExitError, expectedMetadata)
+      expect(onExit).toHaveBeenCalledWith(ConnectorSDKEventType.ExitError, expectedMetadata)
+      expect(onExitError).toHaveBeenCalledWith(expectedMetadata)
+    })
+
+    it('does not fire terminal callbacks twice when the page also signals the failure', async () => {
+      const onExitError = vi.fn()
+      const onExit = vi.fn()
+      const { getByText } = render(
+        <QuilttConnector {...defaultProps} onExit={onExit} onExitError={onExitError} />
+      )
+
+      await waitForWebView()
+      const assetUrl = 'https://cdn.quiltt.io/vite/assets/chunk-missing.js'
+
+      act(() => {
+        capturedWebViewProps.onMessage({
+          nativeEvent: {
+            data: JSON.stringify({
+              source: 'quiltt',
+              type: 'startup_error',
+              code: 'asset_load_failed',
+              url: assetUrl,
+              message: 'A required Connector asset could not be loaded.',
+            }),
+          },
+        })
+      })
+
+      await waitFor(() => expect(getByText('Try again')).toBeTruthy())
+
+      act(() => {
+        capturedWebViewProps.onShouldStartLoadWithRequest({
+          url: `quilttconnector://ExitError?reason=asset_load_failed&url=${encodeURIComponent(assetUrl)}`,
+        })
+      })
+      await new Promise((resolve) => setTimeout(resolve, 50))
+
+      expect(onExitError).toHaveBeenCalledTimes(1)
+      expect(onExit).toHaveBeenCalledTimes(1)
+    })
+
+    it('ignores an asset error reported after the Load handshake', async () => {
+      const onExitError = vi.fn()
+      const onLoad = vi.fn()
+      render(<QuilttConnector {...defaultProps} onExitError={onExitError} onLoad={onLoad} />)
+
+      await waitForWebView()
+      setWebViewRef()
+
+      act(() => {
+        capturedWebViewProps.onShouldStartLoadWithRequest({
+          url: 'quilttconnector://Load?connectorId=test-connector',
+        })
+      })
+      await waitFor(() => expect(onLoad).toHaveBeenCalled())
+
+      act(() => {
+        capturedWebViewProps.onMessage({
+          nativeEvent: {
+            data: JSON.stringify({
+              source: 'quiltt',
+              type: 'startup_error',
+              code: 'asset_load_failed',
+              url: 'https://cdn.quiltt.io/vite/assets/chunk-late.js',
+              message: 'Late failure',
+            }),
+          },
+        })
+      })
+      await new Promise((resolve) => setTimeout(resolve, 20))
+
+      expect(onExitError).not.toHaveBeenCalled()
+    })
+
+    it('shows a timeout without closing the Connector, then notifies on Exit', async () => {
+      const onEvent = vi.fn()
+      const onExit = vi.fn()
+      const onExitError = vi.fn()
+      const { getByText } = render(
+        <QuilttConnector
+          {...defaultProps}
+          onEvent={onEvent}
+          onExit={onExit}
+          onExitError={onExitError}
+          startupTimeoutMs={50}
+        />
+      )
+
+      await waitForWebView()
+      await waitFor(() => expect(getByText('Exit')).toBeTruthy(), { timeout: 2000 })
+
+      expect(onEvent).toHaveBeenCalledWith(
+        ConnectorSDKEventType.ExitError,
+        expect.objectContaining({
+          error: expect.objectContaining({ code: 'startup_timeout' }),
+        })
+      )
+      expect(onExit).not.toHaveBeenCalled()
+      expect(onExitError).not.toHaveBeenCalled()
+
+      fireEvent.press(getByText('Exit'))
+
+      expect(onExit).toHaveBeenCalledWith(
+        ConnectorSDKEventType.ExitError,
+        expect.objectContaining({
+          error: expect.objectContaining({ code: 'startup_timeout' }),
+        })
+      )
+      expect(onExitError).toHaveBeenCalled()
+    })
+
+    it('reports a booted page whose Load handshake was lost', async () => {
+      render(<QuilttConnector {...defaultProps} startupTimeoutMs={50} />)
+
+      await waitForWebView()
+      await waitFor(() => expect(notifyMock).toHaveBeenCalled(), { timeout: 2000 })
+      setWebViewRef()
+
+      act(() => {
+        capturedWebViewProps.onMessage({
+          nativeEvent: {
+            data: JSON.stringify({ source: 'quiltt', type: 'startup_state', booted: true }),
+          },
+        })
+      })
+
+      await waitFor(() =>
+        expect(
+          notifyMock.mock.calls.some(
+            ([error]) =>
+              error instanceof Error &&
+              error.message === 'Connector booted but the Load handshake was not received'
+          )
+        ).toBe(true)
+      )
+    })
+
+    it('recovers when Load arrives after the timeout screen is showing', async () => {
+      const onLoad = vi.fn()
+      const onExitError = vi.fn()
+      const { getByText, queryByTestId } = render(
+        <QuilttConnector
+          {...defaultProps}
+          onLoad={onLoad}
+          onExitError={onExitError}
+          startupTimeoutMs={50}
+        />
+      )
+
+      await waitForWebView()
+      await waitFor(() => expect(getByText('Exit')).toBeTruthy(), { timeout: 2000 })
+      setWebViewRef()
+
+      act(() => {
+        capturedWebViewProps.onShouldStartLoadWithRequest({
+          url: 'quilttconnector://Load?connectorId=test-connector',
+        })
+      })
+
+      await waitFor(() => expect(onLoad).toHaveBeenCalled())
+      expect(queryByTestId('error-screen')).toBeNull()
+      expect(onExitError).not.toHaveBeenCalled()
+    })
+
+    it('does not time out once Load has arrived', async () => {
+      const onEvent = vi.fn()
+      const onLoad = vi.fn()
+      render(
+        <QuilttConnector
+          {...defaultProps}
+          onEvent={onEvent}
+          onLoad={onLoad}
+          startupTimeoutMs={500}
+        />
+      )
+
+      await waitForWebView()
+      setWebViewRef()
+
+      act(() => {
+        capturedWebViewProps.onShouldStartLoadWithRequest({
+          url: 'quilttconnector://Load?connectorId=test-connector',
+        })
+      })
+      await waitFor(() => expect(onLoad).toHaveBeenCalled())
+      await new Promise((resolve) => setTimeout(resolve, 600))
+
+      expect(onEvent).not.toHaveBeenCalledWith(ConnectorSDKEventType.ExitError, expect.anything())
+    })
+
+    it('does not synthesize an error for an ordinary early dismissal', async () => {
+      const onEvent = vi.fn()
+      const onExitAbort = vi.fn()
+      render(
+        <QuilttConnector
+          {...defaultProps}
+          onEvent={onEvent}
+          onExitAbort={onExitAbort}
+          startupTimeoutMs={500}
+        />
+      )
+
+      await waitForWebView()
+      act(() => {
+        capturedWebViewProps.onShouldStartLoadWithRequest({
+          url: 'quilttconnector://ExitAbort?connectorId=test-connector',
+        })
+      })
+      await waitFor(() => expect(onExitAbort).toHaveBeenCalled())
+      await new Promise((resolve) => setTimeout(resolve, 600))
+
+      expect(onEvent).not.toHaveBeenCalledWith(ConnectorSDKEventType.ExitError, expect.anything())
+    })
+
+    it('clears the watchdog on unmount', async () => {
+      const onEvent = vi.fn()
+      const { unmount } = render(
+        <QuilttConnector {...defaultProps} onEvent={onEvent} startupTimeoutMs={500} />
+      )
+
+      await waitForWebView()
+      unmount()
+      await new Promise((resolve) => setTimeout(resolve, 600))
+
+      expect(onEvent).not.toHaveBeenCalled()
+    })
+
+    it('covers the WebView with a loading overlay until Load arrives', async () => {
+      const onLoad = vi.fn()
+      const { getByTestId, queryByTestId } = render(
+        <QuilttConnector {...defaultProps} onLoad={onLoad} />
+      )
+
+      await waitForWebView()
+      expect(getByTestId('loading-overlay')).toBeTruthy()
+      setWebViewRef()
+
+      act(() => {
+        capturedWebViewProps.onShouldStartLoadWithRequest({
+          url: 'quilttconnector://Load?connectorId=test-connector',
+        })
+      })
+
+      await waitFor(() => expect(onLoad).toHaveBeenCalled())
+      expect(queryByTestId('loading-overlay')).toBeNull()
     })
   })
 })
