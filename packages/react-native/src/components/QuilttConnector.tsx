@@ -7,39 +7,174 @@ import {
   useRef,
   useState,
 } from 'react'
-import { Linking, Platform, StyleSheet } from 'react-native'
+import { Linking, Platform, StyleSheet, View } from 'react-native'
 
-import type { ConnectorSDKCallbackMetadata, ConnectorSDKCallbacks } from '@quiltt/react'
+import type {
+  ConnectorSDKCallbackError,
+  ConnectorSDKCallbackMetadata,
+  ConnectorSDKCallbacks,
+  ConnectorSDKStartupErrorCode,
+} from '@quiltt/react'
 import { ConnectorSDKEventType, isTrustedQuilttUrl, useQuilttSession } from '@quiltt/react'
 import { URL } from 'react-native-url-polyfill' // https://github.com/facebook/react-native/issues/16434
 import { WebView } from 'react-native-webview'
-import type { ShouldStartLoadRequest } from 'react-native-webview/lib/WebViewTypes'
+import type {
+  ShouldStartLoadRequest,
+  WebViewErrorEvent,
+  WebViewHttpErrorEvent,
+  WebViewMessageEvent,
+} from 'react-native-webview/lib/WebViewTypes'
 
 import {
   ErrorReporter,
-  getErrorMessage,
   getSDKAgent,
   isEncoded,
   normalizeUrlEncoding,
   smartEncodeURIComponent,
 } from '@/utils'
+import { checkConnectorUrl, type PreFlightCheck } from '@/utils/connectorAssets'
 import { version } from '@/version'
 
 import { AndroidSafeAreaView } from './AndroidSafeAreaView'
 import { ErrorScreen } from './ErrorScreen'
 import { LoadingScreen } from './LoadingScreen'
 
-const PREFLIGHT_RETRY_COUNT = 3
+const DEFAULT_STARTUP_TIMEOUT_MS = 20_000
+
 /**
  * Shown when `connectorId` does not resolve to a Quiltt host. The ID is
  * interpolated into the connector host, so an unusable one is a configuration
  * error rather than something a retry can fix.
  */
 const INVALID_CONNECTOR_ID_MESSAGE = 'Invalid connector ID. Unable to load the Quiltt Connector.'
-export type PreFlightCheck = {
-  checked: boolean
-  error?: string
+
+type StartupFailureState = {
+  failure: ConnectorSDKCallbackError
+  /** Timeouts keep the WebView mounted under the error screen so a late load can recover. */
+  overlay: boolean
 }
+
+const STARTUP_ERROR_CODES: ConnectorSDKStartupErrorCode[] = [
+  'preflight_failed',
+  'asset_load_failed',
+  'webview_failed',
+  'startup_timeout',
+]
+
+const isStartupErrorCode = (value: string): value is ConnectorSDKStartupErrorCode =>
+  (STARTUP_ERROR_CODES as string[]).includes(value)
+
+const startupErrorMessage = (code: ConnectorSDKStartupErrorCode): string => {
+  switch (code) {
+    case 'asset_load_failed':
+      return 'A required Connector asset could not be loaded.'
+    case 'startup_timeout':
+      return 'The Connector did not finish loading.'
+    case 'webview_failed':
+      return 'The Connector could not be displayed.'
+    default:
+      return 'The Connector could not be reached.'
+  }
+}
+
+/**
+ * Runs before the document's own scripts. It reports a failed module graph
+ * element (the entry, a static chunk, or a modulepreload dependency) to the
+ * native side, but only before the Connector's Load handshake and only for
+ * Quiltt assets. It waits out a short grace period so the Connector's own
+ * recovery gets the first chance to handle a lazy-chunk failure.
+ */
+const STARTUP_MONITOR_SCRIPT = `
+(function () {
+  if (window.__quilttStartupMonitorInstalled) return;
+  window.__quilttStartupMonitorInstalled = true;
+
+  var reported = false;
+  var GRACE_MS = 2000;
+
+  function trustedAssetUrl(value) {
+    try {
+      var url = new URL(value, window.location.href);
+      if (url.protocol !== 'https:') return null;
+      var host = url.hostname;
+      var isQuilttHost = /(^|\\.)quiltt\\.(io|dev|app)$/.test(host);
+      if (!isQuilttHost) return null;
+      var assetPath =
+        url.pathname.indexOf('/vite/') !== -1 ||
+        url.pathname.indexOf('/vite-dev/') !== -1 ||
+        url.pathname.indexOf('/vite-test/') !== -1 ||
+        url.pathname.indexOf('/assets/') !== -1;
+      if (!assetPath) return null;
+      return url.toString();
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function report(value, kind) {
+    if (reported) return;
+    var url = trustedAssetUrl(value);
+    if (!url) return;
+    reported = true;
+    window.setTimeout(function () {
+      try {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          source: 'quiltt',
+          type: 'startup_error',
+          code: 'asset_load_failed',
+          kind: kind,
+          url: url,
+          message: 'A required Connector asset could not be loaded.'
+        }));
+      } catch (error) {}
+    }, GRACE_MS);
+  }
+
+  function resourceUrl(target) {
+    if (!target || !target.tagName) return null;
+    var tag = target.tagName.toLowerCase();
+    if (tag === 'script' && target.src) return target.src;
+    if (tag === 'link' && target.href) {
+      var rels = (target.rel || '').toLowerCase().split(/\\s+/);
+      if (rels.indexOf('modulepreload') !== -1) return target.href;
+      if (rels.indexOf('preload') !== -1 && (target.as || '').toLowerCase() === 'script') return target.href;
+    }
+    return null;
+  }
+
+  function onResourceError(event) {
+    var url = resourceUrl(event.target);
+    if (url) report(url, 'resource');
+  }
+
+  window.addEventListener('error', onResourceError, true);
+  document.addEventListener('error', onResourceError, true);
+  window.addEventListener('vite:preloadError', function (event) {
+    var payload = event && event.payload;
+    if (payload && payload.url) report(payload.url, 'preload');
+  }, true);
+})();
+`
+
+/**
+ * Reads the platform's boot marker after a timeout. A page that booted but
+ * whose Load handshake was lost is a different failure from a page that never
+ * executed, and the difference is worth reporting even though both surface the
+ * same timeout UI.
+ */
+const BOOT_MARKER_CHECK_SCRIPT = `
+(function () {
+  try {
+    var booted = document.documentElement.dataset.quilttBooted === 'true';
+    window.ReactNativeWebView.postMessage(JSON.stringify({
+      source: 'quiltt',
+      type: 'startup_state',
+      booted: booted
+    }));
+  } catch (error) {}
+})();
+true;
+`
 
 const parseMetadata = (url: URL, connectorId: string): ConnectorSDKCallbackMetadata => {
   const metadata: ConnectorSDKCallbackMetadata = {
@@ -55,54 +190,19 @@ const parseMetadata = (url: URL, connectorId: string): ConnectorSDKCallbackMetad
   const connectorSessionId = url.searchParams.get('connectorSession')
   if (connectorSessionId) metadata.connectorSession = { id: connectorSessionId }
 
-  return metadata
-}
-
-export const checkConnectorUrl = async (
-  connectorUrl: string,
-  errorReporter: ErrorReporter,
-  retryCount = 0
-): Promise<PreFlightCheck> => {
-  let responseStatus: number | undefined
-  try {
-    const response = await fetch(connectorUrl)
-
-    switch (response.status) {
-      case 200:
-        return { checked: true }
-
-      case 400:
-        console.log('Invalid configuration')
-        return { checked: true }
-
-      case 404:
-        console.error('Connector not found')
-        return { checked: true }
-
-      default:
-        throw new Error('Connector URL is not routable.')
+  // The Connector page attaches a reason when it synthesizes an ExitError for
+  // a startup failure. Older pages do not, so `error` stays absent.
+  const reason = url.searchParams.get('reason')
+  if (reason) {
+    const code = isStartupErrorCode(reason) ? reason : 'webview_failed'
+    metadata.error = {
+      code,
+      message: startupErrorMessage(code),
+      url: url.searchParams.get('url') ?? undefined,
     }
-  } catch (error) {
-    // Log error for debugging
-    console.error(error)
-
-    // Try again
-    if (retryCount < PREFLIGHT_RETRY_COUNT) {
-      const delay = 50 * 2 ** retryCount
-      await new Promise((resolve) => setTimeout(resolve, delay))
-      console.log(`Retrying connection... Attempt ${retryCount + 1}`)
-      return checkConnectorUrl(connectorUrl, errorReporter, retryCount + 1)
-    }
-
-    // Report error after retries exhausted
-    const errorMessage = getErrorMessage(responseStatus, error as Error)
-    const errorToSend = (error as Error) || new Error(errorMessage)
-    const context = { connectorUrl, responseStatus }
-    await errorReporter.notify(errorToSend, context)
-
-    // Return errored preflight check
-    return { checked: true, error: errorMessage }
   }
+
+  return metadata
 }
 
 /**
@@ -181,6 +281,12 @@ type QuilttConnectorProps = {
    * This URL should be a Universal Link (iOS) or App Link (Android) that redirects back to your app.
    */
   appLauncherUrl?: string
+  /**
+   * How long to wait for the Connector's `Load` handshake before showing a
+   * timeout screen. Defaults to 20000ms. A timeout keeps the WebView mounted,
+   * so a late load can still recover.
+   */
+  startupTimeoutMs?: number
   testId?: string
 } & ConnectorSDKCallbacks
 
@@ -198,6 +304,7 @@ const QuilttConnector = forwardRef<QuilttConnectorHandle, QuilttConnectorProps>(
       onExitSuccess,
       onExitAbort,
       onExitError,
+      startupTimeoutMs = DEFAULT_STARTUP_TIMEOUT_MS,
       testId,
     },
     ref
@@ -207,6 +314,17 @@ const QuilttConnector = forwardRef<QuilttConnectorHandle, QuilttConnectorProps>(
     const [preFlightCheck, setPreFlightCheck] = useState<PreFlightCheck>({ checked: false })
     const [errorReporter, setErrorReporter] = useState<ErrorReporter | null>(null)
     const [sdkAgent, setSDKAgent] = useState<string>('')
+
+    const [startupFailure, setStartupFailure] = useState<StartupFailureState | null>(null)
+    const [startupResolved, setStartupResolved] = useState(false)
+    const [webViewKey, setWebViewKey] = useState(0)
+    const [preflightAttempt, setPreflightAttempt] = useState(0)
+
+    const startupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const handshakeRef = useRef(false)
+    const loadedRef = useRef(false)
+    const failureNotifiedRef = useRef(false)
+    const exitNotifiedRef = useRef(false)
 
     const effectiveAppLauncherUrl = appLauncherUrl ?? ''
 
@@ -292,8 +410,20 @@ const QuilttConnector = forwardRef<QuilttConnectorHandle, QuilttConnectorProps>(
         }
       }
 
+      if (preflightAttempt > 0) {
+        // Bust any cached document so "Try again" re-runs the module graph.
+        url.searchParams.append('_quiltt_retry', String(preflightAttempt))
+      }
+
       return url.toString()
-    }, [connectorOrigin, hasConfiguredAppLauncherUrl, safeAppLauncherUrl, sdkAgent, themeMode])
+    }, [
+      connectorOrigin,
+      hasConfiguredAppLauncherUrl,
+      preflightAttempt,
+      safeAppLauncherUrl,
+      sdkAgent,
+      themeMode,
+    ])
 
     // An unusable connector ID cannot be fixed by retrying, so report it rather
     // than leaving the Connector on its loading screen.
@@ -305,12 +435,18 @@ const QuilttConnector = forwardRef<QuilttConnectorHandle, QuilttConnectorProps>(
 
     useEffect(() => {
       if (preFlightCheck.checked || !connectorUrl || !errorReporter) return
+
+      let cancelled = false
       const fetchDataAndSetState = async () => {
         const connectorUrlStatus = await checkConnectorUrl(connectorUrl, errorReporter)
-        setPreFlightCheck(connectorUrlStatus)
+        if (!cancelled) setPreFlightCheck(connectorUrlStatus)
       }
       fetchDataAndSetState()
-    }, [connectorUrl, preFlightCheck, errorReporter])
+
+      return () => {
+        cancelled = true
+      }
+    }, [connectorUrl, errorReporter, preFlightCheck.checked])
 
     const initInjectedJavaScript = useCallback(() => {
       const script = `\
@@ -342,17 +478,187 @@ const QuilttConnector = forwardRef<QuilttConnectorHandle, QuilttConnectorProps>(
       webViewRef.current?.injectJavaScript(script)
     }, [])
 
+    const clearStartupTimer = useCallback(() => {
+      if (startupTimerRef.current) {
+        clearTimeout(startupTimerRef.current)
+        startupTimerRef.current = null
+      }
+    }, [])
+
+    const reportStartupFailure = useCallback(
+      (failure: ConnectorSDKCallbackError) => {
+        void errorReporter?.notify(new Error(failure.message), {
+          connectorUrl,
+          errorCode: failure.code,
+          statusCode: failure.statusCode,
+          failedUrl: failure.url,
+        })
+      },
+      [connectorUrl, errorReporter]
+    )
+
+    const notifyStartupFailure = useCallback(
+      (
+        failure: ConnectorSDKCallbackError,
+        options: { terminal: boolean; overlay?: boolean; report?: boolean }
+      ) => {
+        setStartupFailure({ failure, overlay: options.overlay ?? false })
+        handshakeRef.current = true
+        clearStartupTimer()
+
+        if (failureNotifiedRef.current) return
+        failureNotifiedRef.current = true
+
+        const metadata: ConnectorSDKCallbackMetadata = { connectorId, error: failure }
+        onEvent?.(ConnectorSDKEventType.ExitError, metadata)
+
+        if (options.terminal) {
+          exitNotifiedRef.current = true
+          onExit?.(ConnectorSDKEventType.ExitError, metadata)
+          onExitError?.(metadata)
+        }
+
+        if (options.report) reportStartupFailure(failure)
+      },
+      [clearStartupTimer, connectorId, onEvent, onExit, onExitError, reportStartupFailure]
+    )
+
+    const handleExit = useCallback(
+      (failure: ConnectorSDKCallbackError) => {
+        if (exitNotifiedRef.current) return
+        exitNotifiedRef.current = true
+
+        const metadata: ConnectorSDKCallbackMetadata = { connectorId, error: failure }
+        onExit?.(ConnectorSDKEventType.ExitError, metadata)
+        onExitError?.(metadata)
+      },
+      [connectorId, onExit, onExitError]
+    )
+
+    const handleRetry = useCallback(() => {
+      clearStartupTimer()
+      failureNotifiedRef.current = false
+      exitNotifiedRef.current = false
+      handshakeRef.current = false
+      loadedRef.current = false
+      setStartupResolved(false)
+      setStartupFailure(null)
+      setWebViewKey((key) => key + 1)
+      setPreflightAttempt((attempt) => attempt + 1)
+      setPreFlightCheck({ checked: false })
+    }, [clearStartupTimer])
+
+    const handleWebViewMessage = useCallback(
+      (event: WebViewMessageEvent) => {
+        let payload: unknown
+        try {
+          payload = JSON.parse(event.nativeEvent.data)
+        } catch {
+          return
+        }
+        if (!payload || typeof payload !== 'object') return
+
+        const message = payload as Record<string, unknown>
+        if (message.source !== 'quiltt') return
+
+        if (message.type === 'startup_state') {
+          if (message.booted === true) {
+            void errorReporter?.notify(
+              new Error('Connector booted but the Load handshake was not received'),
+              { connectorUrl, errorCode: 'startup_timeout' }
+            )
+          }
+          return
+        }
+
+        // The watchdog injects the boot-marker check *after* a timeout has
+        // already resolved the handshake, so that reply has to be read before
+        // this guard or it is always discarded.
+        if (handshakeRef.current) return
+
+        if (message.type !== 'startup_error' || message.code !== 'asset_load_failed') return
+        if (typeof message.url !== 'string' || !isTrustedQuilttUrl(message.url)) return
+
+        setStartupResolved(true)
+        notifyStartupFailure(
+          {
+            code: 'asset_load_failed',
+            message:
+              typeof message.message === 'string'
+                ? message.message
+                : 'A required Connector asset could not be loaded.',
+            url: message.url,
+          },
+          { terminal: true, report: true }
+        )
+      },
+      [connectorUrl, errorReporter, notifyStartupFailure]
+    )
+
+    const handleWebViewError = useCallback(
+      (event: WebViewErrorEvent) => {
+        if (handshakeRef.current || loadedRef.current) return
+
+        const { code, description, url } = event.nativeEvent
+        // iOS reports cancelled navigations as -999; they are not failures.
+        if (Platform.OS === 'ios' && code === -999) return
+
+        notifyStartupFailure(
+          {
+            code: 'webview_failed',
+            message: description || 'The Connector could not be displayed.',
+            url,
+          },
+          { terminal: false, report: true }
+        )
+      },
+      [notifyStartupFailure]
+    )
+
+    const handleWebViewHttpError = useCallback(
+      (event: WebViewHttpErrorEvent) => {
+        if (handshakeRef.current || loadedRef.current) return
+
+        const { description, statusCode, url } = event.nativeEvent
+        notifyStartupFailure(
+          {
+            code: 'webview_failed',
+            message: description || `The Connector responded with HTTP ${statusCode}.`,
+            statusCode,
+            url,
+          },
+          { terminal: false, report: true }
+        )
+      },
+      [notifyStartupFailure]
+    )
+
     const handleQuilttEvent = useCallback(
       (url: URL) => {
         url.searchParams.delete('source')
         url.searchParams.append('connectorId', connectorId)
         const metadata = parseMetadata(url, connectorId)
 
+        const eventType = url.host
+        const isExitEvent =
+          eventType === 'ExitError' || eventType === 'ExitAbort' || eventType === 'ExitSuccess'
+
+        handshakeRef.current = true
+        clearStartupTimer()
+        setStartupResolved(true)
+
+        // A startup failure may already have notified through the native
+        // monitor or watchdog before the page's own ExitError arrives. Do not
+        // fire the terminal callbacks twice for the same startup.
+        if (isExitEvent && exitNotifiedRef.current) return
+
         requestAnimationFrame(() => {
           const eventType = url.host
           switch (eventType) {
             case 'Load':
               console.log('Event: Load')
+              loadedRef.current = true
+              setStartupFailure(null)
               initInjectedJavaScript()
               onEvent?.(ConnectorSDKEventType.Load, metadata)
               onLoad?.(metadata)
@@ -367,6 +673,13 @@ const QuilttConnector = forwardRef<QuilttConnectorHandle, QuilttConnectorProps>(
             case 'ExitError':
               console.log('Event: ExitError')
               clearLocalStorage()
+              failureNotifiedRef.current = true
+              exitNotifiedRef.current = true
+              // A page-level asset failure arrives as an ExitError with a
+              // reason. Keep the screen actionable instead of inert.
+              if (!loadedRef.current && metadata.error?.code === 'asset_load_failed') {
+                setStartupFailure({ failure: metadata.error, overlay: false })
+              }
               onEvent?.(ConnectorSDKEventType.ExitError, metadata)
               onExit?.(ConnectorSDKEventType.ExitError, metadata)
               onExitError?.(metadata)
@@ -427,6 +740,7 @@ const QuilttConnector = forwardRef<QuilttConnectorHandle, QuilttConnectorProps>(
       },
       [
         clearLocalStorage,
+        clearStartupTimer,
         connectorId,
         initInjectedJavaScript,
         onEvent,
@@ -512,14 +826,85 @@ const QuilttConnector = forwardRef<QuilttConnectorHandle, QuilttConnectorProps>(
       []
     )
 
+    const preflightFailure = useMemo<ConnectorSDKCallbackError | null>(() => {
+      if (!preFlightCheck.error) return null
+
+      return {
+        code: preFlightCheck.errorCode ?? 'preflight_failed',
+        message: preFlightCheck.error,
+        statusCode: preFlightCheck.statusCode,
+        url: preFlightCheck.failedUrl,
+      }
+    }, [preFlightCheck])
+
+    // Fire detection-time callbacks for preflight failures. Asset failures are
+    // unrecoverable and notify terminally here; other preflight failures notify
+    // on the Exit press so a transient network error does not close the
+    // Connector before the user sees the screen.
+    useEffect(() => {
+      if (!preflightFailure || failureNotifiedRef.current) return
+
+      notifyStartupFailure(preflightFailure, {
+        terminal: preflightFailure.code === 'asset_load_failed',
+        report: false,
+      })
+    }, [preflightFailure, notifyStartupFailure])
+
+    // Readiness watchdog: a page that never sends Load must not leave the user
+    // on a native loading screen forever.
+    useEffect(() => {
+      if (!preFlightCheck.checked || preFlightCheck.error || !connectorUrl || !errorReporter) return
+      if (startupResolved || startupFailure || loadedRef.current) return
+
+      const timer = setTimeout(() => {
+        if (loadedRef.current || startupResolved) return
+
+        notifyStartupFailure(
+          {
+            code: 'startup_timeout',
+            message: 'The Connector did not finish loading. Check your connection and try again.',
+          },
+          { terminal: false, overlay: true, report: true }
+        )
+        webViewRef.current?.injectJavaScript(BOOT_MARKER_CHECK_SCRIPT)
+      }, startupTimeoutMs)
+
+      startupTimerRef.current = timer
+
+      return () => {
+        clearTimeout(timer)
+        if (startupTimerRef.current === timer) startupTimerRef.current = null
+      }
+    }, [
+      connectorUrl,
+      errorReporter,
+      notifyStartupFailure,
+      preFlightCheck.checked,
+      preFlightCheck.error,
+      startupFailure,
+      startupResolved,
+      startupTimeoutMs,
+    ])
+
+    const activeFailure =
+      startupFailure ?? (preflightFailure ? { failure: preflightFailure, overlay: false } : null)
+    const failureCode = activeFailure?.failure.code
+    const canRetry = failureCode === 'asset_load_failed'
+    const errorTitle =
+      failureCode === 'startup_timeout'
+        ? 'The Connector is taking too long to load.'
+        : 'Unable to load the Connector.'
+
     // Error first: an unusable connector ID leaves `connectorUrl` null, which
     // the loading guard below would otherwise treat as "still loading".
-    if (preFlightCheck.error) {
+    if (activeFailure && !activeFailure.overlay) {
       return (
         <ErrorScreen
           testId="error-screen"
-          error={preFlightCheck.error}
-          cta={() => onExitError?.({ connectorId })}
+          title={errorTitle}
+          error={activeFailure.failure.message}
+          ctaLabel={canRetry ? 'Try again' : 'Exit'}
+          cta={canRetry ? handleRetry : () => handleExit(activeFailure.failure)}
         />
       )
     }
@@ -530,47 +915,84 @@ const QuilttConnector = forwardRef<QuilttConnectorHandle, QuilttConnectorProps>(
 
     return (
       <AndroidSafeAreaView testId={testId}>
-        <WebView
-          ref={webViewRef}
-          // Plaid keeps sending window.location = 'about:srcdoc' and causes some noise in RN
-          domStorageEnabled // To enable localStorage in Android webview
-          javaScriptEnabled
-          onLoadEnd={onLoadEnd}
-          onShouldStartLoadWithRequest={requestHandler}
-          originWhitelist={['*']}
-          scrollEnabled={true} // Enables scrolling within the WebView
-          showsHorizontalScrollIndicator={false}
-          showsVerticalScrollIndicator={false}
-          source={{ uri: connectorUrl }}
-          style={styles.webview}
-          testID="webview"
-          webviewDebuggingEnabled
-          {...(Platform.OS === 'ios'
-            ? {
-                allowsBackForwardNavigationGestures: false, // Disables swipe to go back/forward
-                allowsInlineMediaPlayback: true, // Allows videos to play inline
-                automaticallyAdjustContentInsets: false, // Disables automatic padding adjustments
-                bounces: false, // Controls the bouncing effect when scrolling past content boundaries
-                contentInsetAdjustmentBehavior: 'never', // Controls how safe area insets modify content
-                dataDetectorTypes: 'none', // Disables automatic data detection (phone numbers, links, etc.)
-                decelerationRate: 'normal', // Controls scroll deceleration speed
-                keyboardDisplayRequiresUserAction: false, // Allows programmatic keyboard display
-                scrollEventThrottle: 16, // Optimize scroll performance (throttle scroll events)
-                startInLoadingState: false, // Quiltt renders its own branded loader in the WebView HTML
-              }
-            : {
-                androidLayerType: 'hardware', // Use hardware acceleration for rendering
-                cacheEnabled: true, // Enable caching
-                cacheMode: 'LOAD_CACHE_ELSE_NETWORK', // Load from cache when available
-                overScrollMode: 'never', // Disable overscroll effect
-              })}
-        />
+        <View style={styles.container}>
+          <WebView
+            key={webViewKey}
+            ref={webViewRef}
+            // Plaid keeps sending window.location = 'about:srcdoc' and causes some noise in RN
+            domStorageEnabled // To enable localStorage in Android webview
+            injectedJavaScriptBeforeContentLoaded={STARTUP_MONITOR_SCRIPT}
+            javaScriptEnabled
+            onError={handleWebViewError}
+            onHttpError={handleWebViewHttpError}
+            onLoadEnd={onLoadEnd}
+            onMessage={handleWebViewMessage}
+            onShouldStartLoadWithRequest={requestHandler}
+            originWhitelist={['*']}
+            scrollEnabled={true} // Enables scrolling within the WebView
+            showsHorizontalScrollIndicator={false}
+            showsVerticalScrollIndicator={false}
+            source={{ uri: connectorUrl }}
+            style={styles.webview}
+            testID="webview"
+            webviewDebuggingEnabled
+            {...(Platform.OS === 'ios'
+              ? {
+                  allowsBackForwardNavigationGestures: false, // Disables swipe to go back/forward
+                  allowsInlineMediaPlayback: true, // Allows videos to play inline
+                  automaticallyAdjustContentInsets: false, // Disables automatic padding adjustments
+                  bounces: false, // Controls the bouncing effect when scrolling past content boundaries
+                  contentInsetAdjustmentBehavior: 'never', // Controls how safe area insets modify content
+                  dataDetectorTypes: 'none', // Disables automatic data detection (phone numbers, links, etc.)
+                  decelerationRate: 'normal', // Controls scroll deceleration speed
+                  keyboardDisplayRequiresUserAction: false, // Allows programmatic keyboard display
+                  scrollEventThrottle: 16, // Optimize scroll performance (throttle scroll events)
+                  // The native overlay covers the window between the document
+                  // load and the React app mounting. React's LaunchScreen only
+                  // exists after the bundle executes.
+                  startInLoadingState: false,
+                }
+              : {
+                  androidLayerType: 'hardware', // Use hardware acceleration for rendering
+                  cacheEnabled: true, // Enable caching
+                  cacheMode: 'LOAD_DEFAULT', // Revalidate the stable entry against the current build
+                  overScrollMode: 'never', // Disable overscroll effect
+                })}
+          />
+          {!startupResolved && !startupFailure && (
+            <View style={styles.overlay} pointerEvents="none">
+              <LoadingScreen testId="loading-overlay" />
+            </View>
+          )}
+          {activeFailure?.overlay && (
+            <View style={styles.overlay}>
+              <ErrorScreen
+                testId="error-screen"
+                title={errorTitle}
+                error={activeFailure.failure.message}
+                ctaLabel="Exit"
+                cta={() => handleExit(activeFailure.failure)}
+              />
+            </View>
+          )}
+        </View>
       </AndroidSafeAreaView>
     )
   }
 )
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: '#F3F4F6',
+  },
   webview: {
     flex: 1,
     overflow: 'hidden', // Prevent content from overflowing
@@ -580,4 +1002,5 @@ const styles = StyleSheet.create({
 
 QuilttConnector.displayName = 'QuilttConnector'
 
-export { QuilttConnector }
+export type { PreFlightCheck }
+export { checkConnectorUrl, QuilttConnector }
