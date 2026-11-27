@@ -7758,8 +7758,8 @@ packages:
     resolution: {integrity: sha512-GL2BWwVa6JydKO6l/ljVgjAZF4QJ3S7dWDWi53s5GZT8PJzD2fNxi67HANQGKAqPrwEpL5ba7gUBGi0Ls/sEoQ==}
     engines: {node: '>=20.0.0'}
 
-  seroval@1.8.1:
-    resolution: {integrity: sha512-7z9x1flFYfZBz+LfDkXNfm5UIhZJ/97ASaV8Q1wctoVkeqVfv+tLPsWebeMXBNw6XprvwxDE5wC5Ylqmr+iSrA==}
+  seroval@1.8.2:
+    resolution: {integrity: sha512-zmMxi/9MdLK1MKazLmIP6Rk39RuK0Xydd+QHeOYntS37olJeTjB3+nwVj4ce/ZWiZJeRhcO5htfxt0mUzQBscQ==}
     engines: {node: '>=20'}
 
   serve-placeholder@2.0.2:
@@ -11357,7 +11357,7 @@ snapshots:
       pkg-types: 2.4.0
       postcss: 8.5.32
       rolldown-string: 0.3.1(rolldown@1.2.19)
-      seroval: 1.8.1
+      seroval: 1.8.2
       std-env: 4.3.0
       ufo: 1.6.4
       unenv: 2.0.0-rc.24
@@ -17114,7 +17114,7 @@ snapshots:
 
   serialize-javascript@7.1.2: {}
 
-  seroval@1.8.1: {}
+  seroval@1.8.2: {}
 
   serve-placeholder@2.0.2:
     dependencies:
